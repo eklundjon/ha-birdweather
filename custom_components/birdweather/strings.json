@@ -1,0 +1,64 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "BirdWeather Setup",
+        "description": "Pick a nearby public BirdWeather station, or type a name to search. Found {count} station(s). You can also paste a station ID directly.",
+        "data": {
+          "search": "Search stations by name",
+          "station_id": "Station"
+        },
+        "data_description": {
+          "search": "Leave the station empty and submit to search by name instead of by location.",
+          "station_id": "Choose a station, or paste its numeric station ID."
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Could not reach the BirdWeather API. Please try again.",
+      "invalid_station": "No public station was found with that ID.",
+      "no_selection": "Choose a station from the list, paste a station ID, or enter a search term."
+    },
+    "abort": {
+      "already_configured": "This BirdWeather station is already configured"
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "BirdWeather options",
+        "description": "Tune the “notable species” ranking and the unusual-visitor alert.",
+        "data": {
+          "notable_rarity_weight": "Notability: % weight toward rarity",
+          "absence_days": "Unusual visitor: days unheard"
+        },
+        "data_description": {
+          "notable_rarity_weight": "100% = pure rarity; 0% = pure recency. Default 70% leans toward rarity with a small recency nudge.",
+          "absence_days": "How long a known species must have gone unheard before it counts as an unusual visitor. Default 30 days."
+        }
+      }
+    }
+  },
+  "device_automation": {
+    "trigger_type": {
+      "new_species": "New species detected",
+      "unusual_visitor": "Unusual visitor detected"
+    }
+  },
+  "entity": {
+    "sensor": {
+      "recent_detections": { "name": "Recent detections (1 h)" },
+      "last_detection": { "name": "Last detection" },
+      "daily_count": { "name": "Total detections (24 h)" },
+      "daily_top_species": { "name": "Top species (24 h)" },
+      "notable_species": { "name": "Notable species" },
+      "new_species": { "name": "New species" },
+      "yearly_top_species": { "name": "Top species (baseline)" },
+      "rarest_species": { "name": "Rarest species (7 d)" },
+      "lifetime_species": { "name": "Lifetime species" }
+    },
+    "binary_sensor": {
+      "extended_silence": { "name": "Extended silence (24 h)" }
+    }
+  }
+}

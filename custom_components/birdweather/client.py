@@ -1,0 +1,305 @@
+"""Thin async client for the BirdWeather public GraphQL API.
+
+BirdWeather exposes a single GraphQL endpoint that serves *public* station
+data anonymously — no token needed (the token/REST surface is only for
+writing or private stations, neither of which a read-only HA integration
+needs). This module covers the three things the integration consumes:
+
+  * station discovery (bounding-box + free-text search) for onboarding,
+  * recent detections for a station, and
+  * per-species counts for the rarity baseline.
+
+It is deliberately HA-agnostic and dependency-light (just aiohttp) so it can
+be exercised against the live API outside Home Assistant — see
+`scripts/smoke.py`. Field shapes were pinned against the live schema:
+`Station.coords{lat,lon}`, `Detection{timestamp,confidence,score,certainty,
+species{...},soundscape{url}}`, `Species{commonName,scientificName,ebirdCode,
+imageUrl,thumbnailUrl,ebirdUrl,wikipediaUrl,...}`.
+"""
+
+from __future__ import annotations
+
+import math
+from typing import Any
+
+import aiohttp
+
+API_URL = "https://app.birdweather.com/graphql"
+
+# --- GraphQL documents -------------------------------------------------------
+
+_STATIONS_QUERY = """
+query stations($query: String, $first: Int, $ne: InputLocation, $sw: InputLocation) {
+  stations(query: $query, first: $first, ne: $ne, sw: $sw) {
+    totalCount
+    nodes {
+      id
+      name
+      type
+      country
+      state
+      coords { lat lon }
+      latestDetectionAt
+    }
+  }
+}
+"""
+
+_DETECTIONS_QUERY = """
+query stationDetections($id: ID!, $first: Int) {
+  station(id: $id) {
+    id
+    name
+    detections(first: $first) {
+      nodes {
+        id
+        timestamp
+        confidence
+        score
+        certainty
+        soundscape { url }
+        species {
+          commonName
+          scientificName
+          ebirdCode
+          imageUrl
+          thumbnailUrl
+          ebirdUrl
+          wikipediaUrl
+        }
+      }
+    }
+  }
+}
+"""
+
+_TOP_SPECIES_QUERY = """
+query stationTopSpecies($id: ID!, $period: InputDuration, $limit: Int) {
+  station(id: $id) {
+    topSpecies(period: $period, limit: $limit) {
+      count
+      species {
+        commonName
+        scientificName
+        ebirdCode
+      }
+    }
+  }
+}
+"""
+
+
+_STATION_QUERY = """
+query station($id: ID!) {
+  station(id: $id) {
+    id
+    name
+    type
+    country
+    state
+    coords { lat lon }
+    latestDetectionAt
+  }
+}
+"""
+
+
+class BirdWeatherError(Exception):
+    """Raised when the API returns transport or GraphQL-level errors."""
+
+
+class BirdWeatherClient:
+    """Minimal async wrapper over the BirdWeather GraphQL API."""
+
+    def __init__(self, session: aiohttp.ClientSession, url: str = API_URL) -> None:
+        self._session = session
+        self._url = url
+
+    async def _query(self, document: str, variables: dict[str, Any]) -> dict[str, Any]:
+        try:
+            async with self._session.post(
+                self._url,
+                json={"query": document, "variables": variables},
+                headers={"User-Agent": "ha-birdweather"},
+            ) as resp:
+                resp.raise_for_status()
+                payload = await resp.json()
+        except aiohttp.ClientError as err:
+            raise BirdWeatherError(f"transport error: {err}") from err
+        if payload.get("errors"):
+            raise BirdWeatherError(str(payload["errors"]))
+        return payload["data"]
+
+    # --- discovery -----------------------------------------------------------
+
+    async def search_stations(
+        self,
+        *,
+        query: str | None = None,
+        ne: dict[str, float] | None = None,
+        sw: dict[str, float] | None = None,
+        first: int = 25,
+    ) -> list[dict[str, Any]]:
+        """Return public stations matching a free-text query and/or bounding box."""
+        data = await self._query(
+            _STATIONS_QUERY,
+            {"query": query, "first": first, "ne": ne, "sw": sw},
+        )
+        return [_clean_station(n) for n in data["stations"]["nodes"]]
+
+    async def get_station(self, station_id: str) -> dict[str, Any] | None:
+        """Look up a single public station by ID (validation + canonical name)."""
+        data = await self._query(_STATION_QUERY, {"id": station_id})
+        node = data.get("station")
+        return _clean_station(node) if node else None
+
+    async def nearby_stations(
+        self, lat: float, lon: float, radius_km: float = 25.0, first: int = 25
+    ) -> list[dict[str, Any]]:
+        """Public stations within ~radius_km of a point, nearest first.
+
+        Builds a bounding box from the radius (1 deg lat ~= 111 km; lon scaled
+        by cos(lat)), queries it, then sorts the results by great-circle
+        distance and annotates each with `distance_km`.
+        """
+        dlat = radius_km / 111.0
+        dlon = radius_km / (111.0 * max(math.cos(math.radians(lat)), 1e-6))
+        ne = {"lat": lat + dlat, "lon": lon + dlon}
+        sw = {"lat": lat - dlat, "lon": lon - dlon}
+        stations = await self.search_stations(ne=ne, sw=sw, first=first)
+        for s in stations:
+            c = s.get("coords") or {}
+            s["distance_km"] = (
+                _haversine_km(lat, lon, c["lat"], c["lon"])
+                if c.get("lat") is not None
+                else None
+            )
+        stations.sort(key=lambda s: (s["distance_km"] is None, s["distance_km"] or 0))
+        return stations
+
+    # --- data ----------------------------------------------------------------
+
+    async def get_detections(self, station_id: str, first: int = 50) -> list[dict[str, Any]]:
+        """Most recent detections for a station, normalised to the common shape."""
+        data = await self._query(_DETECTIONS_QUERY, {"id": station_id, "first": first})
+        station = data.get("station") or {}
+        nodes = (station.get("detections") or {}).get("nodes") or []
+        return [_normalise_detection(n) for n in nodes]
+
+    # --- pipeline-contract adapters --------------------------------------
+    #
+    # The Haikubox coordinator pipeline (normalise/rarity/notability/recent-
+    # events) consumes a raw `{"detections": [{cn, sn, spCode, dt, …}]}` shape
+    # and a rarity baseline as `[{bird, count}]`. These two methods present
+    # BirdWeather data in exactly that shape so that pipeline reuses verbatim.
+
+    async def get_raw_detections(
+        self, station_id: str, first: int = 300
+    ) -> dict[str, Any]:
+        """Recent detection events in the Haikubox raw-payload shape.
+
+        Per-event (not collapsed); carries the BirdWeather extras (`image`,
+        `audio`, `confidence`) alongside the haikubox keys so the coordinator
+        can thread them through after normalisation.
+        """
+        data = await self._query(_DETECTIONS_QUERY, {"id": station_id, "first": first})
+        station = data.get("station") or {}
+        nodes = (station.get("detections") or {}).get("nodes") or []
+        out: list[dict[str, Any]] = []
+        for n in nodes:
+            sp = n.get("species") or {}
+            out.append(
+                {
+                    "cn": sp.get("commonName"),
+                    "sn": sp.get("scientificName"),
+                    "spCode": sp.get("ebirdCode") or "",
+                    "dt": n.get("timestamp"),
+                    "image": sp.get("imageUrl"),
+                    "audio": (n.get("soundscape") or {}).get("url"),
+                    "confidence": n.get("confidence"),
+                }
+            )
+        return {"detections": out}
+
+    async def get_yearly_count(
+        self, station_id: str, months: int = 1, limit: int = 200
+    ) -> list[dict[str, Any]]:
+        """Rarity baseline in the Haikubox yearly-count shape: `[{bird, count}]`,
+        keyed by common name (the pipeline ranks by common name)."""
+        data = await self._query(
+            _TOP_SPECIES_QUERY,
+            {"id": station_id, "period": {"count": months, "unit": "month"}, "limit": limit},
+        )
+        station = data.get("station") or {}
+        nodes = station.get("topSpecies") or []
+        out: list[dict[str, Any]] = []
+        for n in nodes:
+            cn = (n.get("species") or {}).get("commonName")
+            if cn:
+                out.append({"bird": cn, "count": n.get("count") or 0})
+        return out
+
+    async def get_species_counts(
+        self, station_id: str, months: int = 1, limit: int = 200
+    ) -> dict[str, int]:
+        """Map of scientific_name -> detection count over the trailing N months,
+        ranked highest-first by the API. Serves as the rarity baseline (the
+        BirdWeather analogue of Haikubox's yearly_ranks)."""
+        data = await self._query(
+            _TOP_SPECIES_QUERY,
+            {"id": station_id, "period": {"count": months, "unit": "month"}, "limit": limit},
+        )
+        station = data.get("station") or {}
+        nodes = station.get("topSpecies") or []
+        out: dict[str, int] = {}
+        for n in nodes:
+            sp = n.get("species") or {}
+            sci = sp.get("scientificName")
+            if sci:
+                out[sci] = n.get("count") or 0
+        return out
+
+
+# --- normalisation -----------------------------------------------------------
+
+
+def _clean_station(node: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "id": node["id"],
+        "name": (node.get("name") or "").strip() or f"Station {node['id']}",
+        "type": node.get("type"),
+        "country": node.get("country"),
+        "state": node.get("state"),
+        "coords": node.get("coords"),
+        "latest_detection_at": node.get("latestDetectionAt"),
+    }
+
+
+def _normalise_detection(node: dict[str, Any]) -> dict[str, Any]:
+    """Map a BirdWeather Detection onto the haikubox `detections[]` contract,
+    carrying the extra BirdWeather-only fields (confidence/audio/links)."""
+    sp = node.get("species") or {}
+    return {
+        "species": sp.get("commonName"),
+        "scientific_name": sp.get("scientificName"),
+        "sp_code": sp.get("ebirdCode"),
+        "image_url": sp.get("imageUrl"),
+        "thumbnail_url": sp.get("thumbnailUrl"),
+        "last_seen": node.get("timestamp"),
+        # BirdWeather extras (no Haikubox equivalent):
+        "confidence": node.get("confidence"),
+        "score": node.get("score"),
+        "certainty": node.get("certainty"),
+        "audio_url": (node.get("soundscape") or {}).get("url"),
+        "ebird_url": sp.get("ebirdUrl"),
+        "wikipedia_url": sp.get("wikipediaUrl"),
+    }
+
+
+def _haversine_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
+    r = 6371.0
+    p1, p2 = math.radians(lat1), math.radians(lat2)
+    dp = math.radians(lat2 - lat1)
+    dl = math.radians(lon2 - lon1)
+    a = math.sin(dp / 2) ** 2 + math.cos(p1) * math.cos(p2) * math.sin(dl / 2) ** 2
+    return r * 2 * math.asin(math.sqrt(a))
