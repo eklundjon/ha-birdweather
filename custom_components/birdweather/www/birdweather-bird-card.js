@@ -1,4 +1,7 @@
-// GENERATED from ha-haikubox/haikubox-bird-card.js by scripts/sync-cards.sh — do not edit directly.
+// Seeded from ha-haikubox/haikubox-bird-card.js via scripts/sync-cards.sh, then
+// FORKED — BirdWeather-only changes live here now (photo attribution; blur-fill
+// image handling for BirdWeather's square photos). Hand-maintained: do NOT
+// re-run sync-cards.sh over this file — it would drop those. See sync-cards.sh.
 function _esc(s) {
   return String(s ?? "")
     .replace(/&/g, "&amp;")
@@ -504,11 +507,26 @@ class BirdWeatherBirdCard extends HTMLElement {
           border-radius: var(--ha-card-border-radius, 4px)
             var(--ha-card-border-radius, 4px) 0 0;
         }
+        /* Blur-fill: show the whole photo (contain) so the bird is never
+         * cropped, over a blurred, zoomed copy of the same image that fills
+         * the box. Aspect-agnostic — handles BirdWeather's 1:1 source (and any
+         * other ratio) in any card shape without slicing off heads/feet. */
+        .img-blur {
+          position: absolute;
+          inset: 0;
+          z-index: 0;
+          background-size: cover;
+          background-position: center;
+          filter: blur(16px) saturate(1.15);
+          transform: scale(1.2);  /* overscan to hide the blurred edges */
+        }
         img {
           display: block;
+          position: relative;
+          z-index: 1;
           width: 100%;
           height: 100%;
-          object-fit: cover;
+          object-fit: contain;
         }
         .img-placeholder {
           width: 100%;
@@ -531,6 +549,14 @@ class BirdWeatherBirdCard extends HTMLElement {
           text-align: center;
         }
 
+        /* Text block — centered in every layout (portrait and wide). */
+        .text-group {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          gap: 3px;
+        }
+
         /* Wide layout: image left, text right */
         @container (aspect-ratio > 3/2) {
           .layout { flex-direction: row; }
@@ -545,11 +571,8 @@ class BirdWeatherBirdCard extends HTMLElement {
           .body {
             flex: 1 1 auto;
             min-height: 0;
-            align-items: flex-start;
-            text-align: left;
             padding: 16px 20px;
           }
-          .text-group { align-items: flex-start; }
         }
 
         /*
@@ -573,12 +596,6 @@ class BirdWeatherBirdCard extends HTMLElement {
           }
         }
 
-        .text-group {
-          display: flex;
-          flex-direction: column;
-          align-items: center;
-          gap: 3px;
-        }
         /*
          * Responsive type: sizes scale with the card via container-query
          * units (cqw/cqh) so the common name reads at a distance on large
@@ -624,6 +641,7 @@ class BirdWeatherBirdCard extends HTMLElement {
           position: absolute;
           right: 0;
           bottom: 0;
+          z-index: 2;  /* above the blur layer (0) and the photo (1) */
           max-width: 100%;
           box-sizing: border-box;
           padding: 1px 6px;
@@ -648,7 +666,8 @@ class BirdWeatherBirdCard extends HTMLElement {
           ` : `
             <div class="img-wrap">
               ${bird.image_url
-                ? `<img src="${_esc(bird.image_url)}" alt="${_esc(bird.species)}">`
+                ? `<div class="img-blur" style="background-image:url('${_esc(bird.image_url)}')"></div>
+                   <img src="${_esc(bird.image_url)}" alt="${_esc(bird.species)}">`
                 : `<div class="img-placeholder">🐦</div>`}
               ${bird.image_url && this._config.show_attribution !== false
                 ? this._attributionHtml(bird)
@@ -671,6 +690,9 @@ class BirdWeatherBirdCard extends HTMLElement {
     const img = this.shadowRoot.querySelector(".img-wrap img");
     if (img) {
       img.addEventListener("error", () => {
+        // Drop the blurred backdrop too (its background-image is the same
+        // broken URL) so a failed load falls back cleanly to the placeholder.
+        this.shadowRoot.querySelector(".img-wrap .img-blur")?.remove();
         const placeholder = document.createElement("div");
         placeholder.className = "img-placeholder";
         placeholder.textContent = "🐦";

@@ -16,10 +16,13 @@
 #
 # Source path defaults to a sibling ha-haikubox checkout; override with $1.
 #
-# NOTE: the generated files are derived artifacts — edit the Haikubox cards
-# (or this script) and re-run, rather than hand-editing the output. Once
-# BirdWeather grows brand-only card features (audio playback, confidence),
-# revisit whether to keep pure generation or fork.
+# STATUS (forked 2026-06-04): the cards have now FORKED. BirdWeather has card
+# features Haikubox lacks — photo attribution (BirdWeather supplies
+# imageCredit/License; Haikubox doesn't) and blur-fill image handling (its
+# photos are 1:1 squares vs Haikubox's 4:3). This script therefore captured only
+# the ONE-TIME seeding and must NOT be re-run over the live cards — it would
+# silently drop those BirdWeather-only changes. Kept for reference / to
+# re-derive a fresh starting point. The BirdWeather cards are now hand-maintained.
 
 set -euo pipefail
 

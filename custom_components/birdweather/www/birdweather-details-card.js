@@ -1,4 +1,7 @@
-// GENERATED from ha-haikubox/haikubox-details-card.js by scripts/sync-cards.sh — do not edit directly.
+// Seeded from ha-haikubox/haikubox-details-card.js via scripts/sync-cards.sh,
+// then FORKED — BirdWeather-only photo attribution lives here now.
+// Hand-maintained: do NOT re-run sync-cards.sh over this file (it would drop
+// that). See scripts/sync-cards.sh.
 function _esc(s) {
   return String(s ?? "")
     .replace(/&/g, "&amp;")
