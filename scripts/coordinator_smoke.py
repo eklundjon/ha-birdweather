@@ -74,6 +74,11 @@ async def main(station_id: str) -> None:
               "lifetime_species_count", "yearly_top_species", "rarest_species"):
         print(f"  {k:22} -> {head(k)}")
 
+    print("\nnative-overview sensors:")
+    for k in ("today_total", "typical_daily_count", "new_species_window",
+              "history_earliest", "today_top"):
+        print(f"  {k:22} -> {head(k)}")
+
     ld = data.get("last_detection") or {}
     print("\nlast_detection record:")
     for f in ("species", "scientific_name", "sp_code", "image_url", "audio_url",

@@ -58,8 +58,12 @@ Implementation notes:
 ## Data-window correctness
 
 - `DETECTION_FETCH_LIMIT` (300 recent events) can fail to span a full 24h on
-  busy stations — switch the detections query to a time-bounded form
-  (`from`/`period` args) with cursor pagination for a true 24h window.
+  busy stations. The headline 24h count/top-species/diversity now come from
+  native `counts`/`topSpecies(period: 1 day)` (true totals — done), but the
+  `daily_count` *list* still feeds the 7-day rarest rollup, notability scoring,
+  and the recent/last-detection records from the paginated feed. Switch that
+  feed to a time-bounded form (`from`/`period` + cursor pagination) for a true
+  24h event list.
 - Day boundaries are currently UTC (inherited from haikubox). For a
   fixed-location station, keying the 7-day store / daily windows to the
   station's timezone is arguably more correct.
@@ -72,6 +76,6 @@ Implementation notes:
 - `diagnostics.py` (redacted state dump).
 - Notification blueprints (`blueprints/automation/birdweather/`).
 - README + docs (mirror haikubox docs/).
-- `git init` + initial commit + GitHub remote; then HACS metadata.
+- GitHub remote + HACS metadata (`git init` + initial commit — done).
 - Wordmark `logo.png` if a real BirdWeather wordmark asset turns up (currently
   icon-only; HA falls back to the icon).

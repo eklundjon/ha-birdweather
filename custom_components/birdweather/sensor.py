@@ -1,6 +1,14 @@
 from __future__ import annotations
 
-from homeassistant.components.sensor import SensorEntity, SensorStateClass
+import math
+from datetime import datetime
+
+from homeassistant.components.sensor import (
+    SensorDeviceClass,
+    SensorEntity,
+    SensorStateClass,
+)
+from homeassistant.const import EntityCategory
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
@@ -31,6 +39,10 @@ async def async_setup_entry(
             BirdWeatherYearlyTopSpeciesSensor(coordinator, station_id),
             BirdWeatherRarestSpeciesSensor(coordinator, station_id),
             BirdWeatherLifetimeSpeciesSensor(coordinator, station_id),
+            BirdWeatherSpeciesDiversitySensor(coordinator, station_id),
+            BirdWeatherActivitySensor(coordinator, station_id),
+            BirdWeatherNewSpeciesWindowSensor(coordinator, station_id),
+            BirdWeatherHistoryDepthSensor(coordinator, station_id),
         ]
     )
 
@@ -106,7 +118,11 @@ class BirdWeatherLastDetectionSensor(_BirdWeatherSensor):
 
 
 class BirdWeatherDailyCountSensor(_BirdWeatherSensor):
-    """Total individual detections over the trailing 24 hours."""
+    """Total individual detections over the trailing 24 hours.
+
+    Sourced from BirdWeather's native `counts(period: 1 day)` — a true total,
+    not capped or limited by detection-feed pagination.
+    """
 
     _attr_translation_key = "daily_count"
     _attr_icon = "mdi:counter"
@@ -118,8 +134,8 @@ class BirdWeatherDailyCountSensor(_BirdWeatherSensor):
         self._attr_unique_id = f"{station_id}_daily_count"
 
     @property
-    def native_value(self) -> int:
-        return sum(s.get("count", 0) for s in self.coordinator.data.get("daily_count", []))
+    def native_value(self) -> int | None:
+        return self.coordinator.data.get("today_total")
 
 
 class BirdWeatherDailyTopSpeciesSensor(_BirdWeatherSensor):
@@ -268,3 +284,135 @@ class BirdWeatherLifetimeSpeciesSensor(_BirdWeatherSensor):
     @property
     def native_value(self) -> int:
         return self.coordinator.data.get("lifetime_species_count", 0)
+
+
+class BirdWeatherSpeciesDiversitySensor(_BirdWeatherSensor):
+    """Shannon diversity index (H′) over the trailing 24 hours.
+
+    Combines richness (how many species) and evenness (how balanced their
+    counts) into one number: higher = a more varied, balanced soundscape;
+    a single dominant species pushes it toward 0. Richness and Pielou's
+    evenness are exposed as attributes.
+    """
+
+    _attr_translation_key = "species_diversity"
+    _attr_icon = "mdi:chart-bell-curve"
+    _attr_state_class = SensorStateClass.MEASUREMENT
+    _attr_suggested_display_precision = 2
+
+    def __init__(self, coordinator: BirdWeatherCoordinator, station_id: str) -> None:
+        super().__init__(coordinator, station_id)
+        self._attr_unique_id = f"{station_id}_species_diversity"
+
+    def _counts(self) -> list[int]:
+        return [
+            int(s.get("count") or 0)
+            for s in self.coordinator.data.get("today_top") or []
+            if (s.get("count") or 0) > 0
+        ]
+
+    @property
+    def native_value(self) -> float | None:
+        counts = self._counts()
+        total = sum(counts)
+        if not total:
+            return None
+        h = -sum((c / total) * math.log(c / total) for c in counts)
+        return round(h if h > 0 else 0.0, 4)
+
+    @property
+    def extra_state_attributes(self) -> dict:
+        counts = self._counts()
+        richness = len(counts)
+        attrs: dict = {"richness": richness}
+        value = self.native_value
+        if value is not None and richness > 1:
+            # Pielou's evenness J′ = H′ / ln(S): 0 = one species dominates,
+            # 1 = perfectly even.
+            attrs["evenness"] = round(value / math.log(richness), 4)
+        return attrs
+
+
+class BirdWeatherActivitySensor(_BirdWeatherSensor):
+    """Bird activity relative to a typical day.
+
+    The trailing-24h detection total divided by the station's average daily
+    total over its baseline window — 1.0 ≈ a normal day, 2.0 ≈ twice as busy,
+    0.5 ≈ half. `unknown` until a baseline exists.
+    """
+
+    _attr_translation_key = "activity_level"
+    _attr_icon = "mdi:speedometer"
+    _attr_state_class = SensorStateClass.MEASUREMENT
+    _attr_suggested_display_precision = 2
+
+    def __init__(self, coordinator: BirdWeatherCoordinator, station_id: str) -> None:
+        super().__init__(coordinator, station_id)
+        self._attr_unique_id = f"{station_id}_activity_level"
+
+    @property
+    def native_value(self) -> float | None:
+        data = self.coordinator.data
+        today = data.get("today_total")
+        typical = data.get("typical_daily_count")
+        if today is None or not typical:
+            return None
+        return round(today / typical, 2)
+
+    @property
+    def extra_state_attributes(self) -> dict:
+        data = self.coordinator.data
+        return {
+            "detections_today": data.get("today_total"),
+            "typical_daily_count": data.get("typical_daily_count"),
+        }
+
+
+class BirdWeatherNewSpeciesWindowSensor(_BirdWeatherSensor):
+    """Number of species first heard at this station within the recent window.
+
+    A momentum signal — how many genuinely new species have shown up lately
+    (e.g. spring arrivals) — derived by diffing the station's recent vs.
+    historical top-species sets.
+    """
+
+    _attr_translation_key = "new_species_window"
+    _attr_icon = "mdi:new-box"
+    _attr_native_unit_of_measurement = "species"
+    _attr_state_class = SensorStateClass.MEASUREMENT
+
+    def __init__(self, coordinator: BirdWeatherCoordinator, station_id: str) -> None:
+        super().__init__(coordinator, station_id)
+        self._attr_unique_id = f"{station_id}_new_species_window"
+
+    @property
+    def native_value(self) -> int | None:
+        return self.coordinator.data.get("new_species_window")
+
+
+class BirdWeatherHistoryDepthSensor(_BirdWeatherSensor):
+    """How far back this station's detection history reaches (diagnostic).
+
+    The station's earliest recorded detection, straight from the BirdWeather
+    API — useful context for the activity/lifetime figures.
+    """
+
+    _attr_translation_key = "history_start"
+    _attr_icon = "mdi:clock-start"
+    _attr_device_class = SensorDeviceClass.TIMESTAMP
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+
+    def __init__(self, coordinator: BirdWeatherCoordinator, station_id: str) -> None:
+        super().__init__(coordinator, station_id)
+        self._attr_unique_id = f"{station_id}_history_start"
+
+    @property
+    def native_value(self) -> datetime | None:
+        earliest = self.coordinator.data.get("history_earliest")
+        if not earliest:
+            return None
+        try:
+            # BirdWeather returns a tz-aware ISO timestamp (e.g. with -05:00).
+            return datetime.fromisoformat(earliest)
+        except ValueError:
+            return None

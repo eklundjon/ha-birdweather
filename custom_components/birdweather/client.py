@@ -20,11 +20,17 @@ imageUrl,thumbnailUrl,ebirdUrl,wikipediaUrl,...}`.
 from __future__ import annotations
 
 import math
+from datetime import date
 from typing import Any
 
 import aiohttp
 
 API_URL = "https://app.birdweather.com/graphql"
+
+# BirdWeather launched ~2021; this lower bound is "before any station existed"
+# and serves as the from-edge of all-time windows (the API's from/to InputDuration
+# requires both ends, so there's no open-ended "since the beginning").
+_ALLTIME_FROM = "2015-01-01"
 
 # --- GraphQL documents -------------------------------------------------------
 
@@ -84,6 +90,36 @@ query stationTopSpecies($id: ID!, $period: InputDuration, $limit: Int) {
         ebirdCode
       }
     }
+  }
+}
+"""
+
+
+# One round-trip powering the activity / diversity / new-species / history
+# sensors entirely from BirdWeather's native per-period aggregates. `today` is a
+# trailing 1-day window (true counts, not a sample); `baseline` a trailing 30-day
+# total for the "typical day"; `life` an all-time distinct-species count; and the
+# `recent` vs `hist` topSpecies sets diff to find species first heard recently.
+_OVERVIEW_QUERY = """
+query stationOverview(
+  $id: ID!
+  $today: InputDuration
+  $baseline: InputDuration
+  $life: InputDuration
+  $recent: InputDuration
+  $hist: InputDuration
+) {
+  station(id: $id) {
+    earliestDetectionAt
+    today: counts(period: $today) { detections species }
+    baseline: counts(period: $baseline) { detections }
+    life: counts(period: $life) { species }
+    todayTop: topSpecies(period: $today, limit: 200) {
+      count
+      species { commonName scientificName ebirdCode imageUrl }
+    }
+    recent: topSpecies(period: $recent, limit: 1000) { species { commonName } }
+    hist: topSpecies(period: $hist, limit: 2000) { species { commonName } }
   }
 }
 """
@@ -238,6 +274,77 @@ class BirdWeatherClient:
             if cn:
                 out.append({"bird": cn, "count": n.get("count") or 0})
         return out
+
+    async def get_overview(
+        self,
+        station_id: str,
+        *,
+        today: date,
+        new_species_cutoff: date,
+        baseline_days: int,
+    ) -> dict[str, Any]:
+        """Native per-period aggregates for the activity / diversity / new-species
+        / history sensors, in a single GraphQL round-trip.
+
+        `new_species_cutoff` is `today - NEW_SPECIES_WINDOW_DAYS`; `baseline_days`
+        sizes the typical-day divisor. Returns derived scalars plus a normalised
+        today-top list (already ranked by count, with image + scientific name
+        straight from the API). BirdWeather predates `_ALLTIME_FROM`, which stands
+        in for "all time" on the from/to windows (InputDuration needs both bounds).
+        """
+        today_iso = today.isoformat()
+        cutoff_iso = new_species_cutoff.isoformat()
+        data = await self._query(
+            _OVERVIEW_QUERY,
+            {
+                "id": station_id,
+                "today": {"count": 1, "unit": "day"},
+                "baseline": {"count": baseline_days, "unit": "day"},
+                "life": {"from": _ALLTIME_FROM, "to": today_iso},
+                "recent": {"from": cutoff_iso, "to": today_iso},
+                "hist": {"from": _ALLTIME_FROM, "to": cutoff_iso},
+            },
+        )
+        st = data.get("station") or {}
+        today_c = st.get("today") or {}
+        baseline_det = (st.get("baseline") or {}).get("detections") or 0
+
+        today_top: list[dict[str, Any]] = []
+        for n in st.get("todayTop") or []:
+            sp = n.get("species") or {}
+            name = sp.get("commonName")
+            if not name:
+                continue
+            today_top.append(
+                {
+                    "species": name,
+                    "scientific_name": sp.get("scientificName") or "",
+                    "sp_code": sp.get("ebirdCode") or "",
+                    "image_url": sp.get("imageUrl"),
+                    "count": int(n.get("count") or 0),
+                }
+            )
+
+        def _names(key: str) -> set[str]:
+            names: set[str] = set()
+            for n in st.get(key) or []:
+                cn = (n.get("species") or {}).get("commonName")
+                if cn:
+                    names.add(cn)
+            return names
+
+        return {
+            # Full tz-aware ISO timestamp of the station's first-ever detection.
+            "history_earliest": st.get("earliestDetectionAt") or None,
+            "today_total": int(today_c.get("detections") or 0),
+            "today_species_count": int(today_c.get("species") or 0),
+            "lifetime_species": int((st.get("life") or {}).get("species") or 0),
+            "typical_daily": (
+                round(baseline_det / baseline_days, 1) if baseline_det else None
+            ),
+            "new_species_window": len(_names("recent") - _names("hist")),
+            "today_top": today_top,
+        }
 
     async def get_species_counts(
         self, station_id: str, months: int = 1, limit: int = 200

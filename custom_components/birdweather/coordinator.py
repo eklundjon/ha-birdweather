@@ -17,6 +17,7 @@ from .client import BirdWeatherClient, BirdWeatherError
 from .const import (
     CONF_ABSENCE_DAYS,
     CONF_NOTABLE_RARITY_WEIGHT,
+    ACTIVITY_BASELINE_DAYS,
     CONF_STATION_ID,
     CONF_STATION_NAME,
     DAILY_WINDOW_HOURS,
@@ -28,6 +29,7 @@ from .const import (
     EVENT_BIRDWEATHER,
     LAST_DETECTION_EVENT_LIMIT,
     NEW_SPECIES_HISTORY_LIMIT,
+    NEW_SPECIES_WINDOW_DAYS,
     NOTABILITY_WINDOW_HOURS,
     RARITY_PERIOD_MONTHS,
     RECENT_WINDOW_HOURS,
@@ -273,17 +275,48 @@ class BirdWeatherCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
         self._fire_detection_events(detections, newly_seen, prior_last_seen)
 
+        # Native per-period aggregates (activity / diversity / new-species /
+        # history). Best-effort: a blip here leaves those sensors unknown rather
+        # than failing the whole poll. BirdWeather's true counts make this far
+        # simpler than Haikubox's local per-day store + backfill.
+        try:
+            overview = await self._client.get_overview(
+                self.station_id,
+                today=today,
+                new_species_cutoff=today - timedelta(days=NEW_SPECIES_WINDOW_DAYS),
+                baseline_days=ACTIVITY_BASELINE_DAYS,
+            )
+        except (aiohttp.ClientError, BirdWeatherError) as err:
+            _LOGGER.warning("Could not fetch station overview: %s", err)
+            overview = {}
+
+        # Today's top species (true counts), enriched with the rarity baseline.
+        today_top = list(overview.get("today_top") or [])
+        for rec in today_top:
+            rec["last_seen"] = self._last_seen.get(rec["species"])
+        _apply_rarity_scores(today_top, self._yearly_ranks, self._yearly_species_count)
+
         return {
             "recent_detections": _ranked(detections),
             "last_detection": self._last_detected,
             "recent_events": _ranked(recent_events),
             "notable_detection": self._last_notable,
+            # `daily_count` (the trailing-24h detection list) still feeds the
+            # 7-day rarest rollup, notability, and the extended-silence sensor;
+            # the headline count/top-species now come from true native totals.
             "daily_count": daily_count,
-            "daily_top_species": _ranked(self._build_daily_list(daily_count)),
+            "daily_top_species": _ranked(today_top),
+            "today_total": overview.get("today_total"),
+            "today_top": today_top,
+            "typical_daily_count": overview.get("typical_daily"),
+            "new_species_window": overview.get("new_species_window"),
+            "history_earliest": overview.get("history_earliest"),
             "notable_detections": _ranked(notable),
             "new_detections": _ranked(self._build_new_species_history()),
             "new_detection": self._build_last_new_species(),
-            "lifetime_species_count": len(self._seen_species),
+            "lifetime_species_count": (
+                overview.get("lifetime_species") or len(self._seen_species)
+            ),
             "yearly_top_species": self._build_yearly_top(),
             "rarest_species": _ranked(seven_day_rare),
         }

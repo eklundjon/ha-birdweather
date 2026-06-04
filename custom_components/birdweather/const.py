@@ -44,6 +44,12 @@ NOTABILITY_WINDOW_HOURS = 24
 # signal than a calendar-year tally, and sidesteps the year-reset problem.
 RARITY_PERIOD_MONTHS = 1
 
+# Activity / diversity / new-species windows. BirdWeather serves true per-period
+# counts natively, so these are computed from the API directly (no local per-day
+# store or backfill — unlike Haikubox, whose REST surface forced that).
+ACTIVITY_BASELINE_DAYS = 30  # "typical day" = trailing-window total / this
+NEW_SPECIES_WINDOW_DAYS = 30  # species first heard within this many days = "new"
+
 # Automation events — one bus event, type-discriminated, mirroring haikubox.
 EVENT_BIRDWEATHER = "birdweather_event"
 TRIGGER_NEW_SPECIES = "new_species"

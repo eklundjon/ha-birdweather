@@ -55,7 +55,11 @@
       "new_species": { "name": "New species" },
       "yearly_top_species": { "name": "Top species (baseline)" },
       "rarest_species": { "name": "Rarest species (7 d)" },
-      "lifetime_species": { "name": "Lifetime species" }
+      "lifetime_species": { "name": "Lifetime species" },
+      "species_diversity": { "name": "Species diversity (24 h)" },
+      "activity_level": { "name": "Activity vs. typical" },
+      "new_species_window": { "name": "New species (30 d)" },
+      "history_start": { "name": "Detection history start" }
     },
     "binary_sensor": {
       "extended_silence": { "name": "Extended silence (24 h)" }
