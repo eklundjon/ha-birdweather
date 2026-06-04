@@ -22,6 +22,7 @@ from homeassistant.helpers.selector import (
     SelectSelectorConfig,
     SelectSelectorMode,
     TextSelector,
+    TextSelectorConfig,
 )
 
 from .client import BirdWeatherClient, BirdWeatherError
@@ -30,6 +31,8 @@ from .const import (
     CONF_NOTABLE_RARITY_WEIGHT,
     CONF_STATION_ID,
     CONF_STATION_NAME,
+    CONF_WATCHED_EXTRA,
+    CONF_WATCHED_SPECIES,
     DEFAULT_ABSENCE_DAYS,
     DEFAULT_NOTABLE_RARITY_WEIGHT,
     DEFAULT_RADIUS_KM,
@@ -149,6 +152,18 @@ class BirdWeatherOptionsFlow(OptionsFlow):
             return self.async_create_entry(title="", data=user_input)
 
         opts = self.config_entry.options
+
+        # Watch-list picker: union of species the station has detected with any
+        # already-saved selections (so a saved name that's since dropped off the
+        # seen list isn't silently lost from the dropdown).
+        coordinator = getattr(self.config_entry, "runtime_data", None)
+        known = coordinator.known_species if coordinator else []
+        saved = opts.get(CONF_WATCHED_SPECIES) or []
+        watch_options = [
+            SelectOptionDict(value=n, label=n)
+            for n in sorted(set(known) | set(saved))
+        ]
+
         return self.async_show_form(
             step_id="init",
             data_schema=vol.Schema(
@@ -175,6 +190,20 @@ class BirdWeatherOptionsFlow(OptionsFlow):
                             unit_of_measurement="days",
                         )
                     ),
+                    vol.Optional(
+                        CONF_WATCHED_SPECIES, default=saved
+                    ): SelectSelector(
+                        SelectSelectorConfig(
+                            options=watch_options,
+                            multiple=True,
+                            custom_value=False,
+                            mode=SelectSelectorMode.DROPDOWN,
+                        )
+                    ),
+                    vol.Optional(
+                        CONF_WATCHED_EXTRA,
+                        default=opts.get(CONF_WATCHED_EXTRA, ""),
+                    ): TextSelector(TextSelectorConfig(multiline=True)),
                 }
             ),
         )

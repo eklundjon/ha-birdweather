@@ -33,8 +33,11 @@ from .const import (
     NOTABILITY_WINDOW_HOURS,
     RARITY_PERIOD_MONTHS,
     RECENT_WINDOW_HOURS,
+    CONF_WATCHED_EXTRA,
+    CONF_WATCHED_SPECIES,
     TRIGGER_NEW_SPECIES,
     TRIGGER_UNUSUAL_VISITOR,
+    TRIGGER_WATCHED_SPECIES,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -373,7 +376,32 @@ class BirdWeatherCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                         TRIGGER_UNUSUAL_VISITOR, by_species[sp], days_absent=days_absent
                     )
 
+        # Watched species: fire when a user-chosen species enters the recent
+        # window (edge-gated against the previous poll, like unusual_visitor, so
+        # it fires on appearance — not every poll while it lingers). Silent on
+        # the first poll of a session (prev is None → no restart flood). A
+        # newly-seen species that's also watched fires both events — both true.
+        watched = self._watched_species()
+        if watched and self._prev_recent_species is not None:
+            for sp in current_recent - self._prev_recent_species:
+                if sp.casefold() in watched:
+                    self._fire_event(TRIGGER_WATCHED_SPECIES, by_species[sp])
+
         self._prev_recent_species = current_recent
+
+    def _watched_species(self) -> set[str]:
+        """Case-folded set of common names to watch, from the options flow:
+        the pick-list selections plus the free-text list (one name per line)."""
+        opts = self.config_entry.options
+        names = list(opts.get(CONF_WATCHED_SPECIES) or [])
+        names += [ln.strip() for ln in (opts.get(CONF_WATCHED_EXTRA) or "").splitlines()]
+        return {n.casefold() for n in names if n.strip()}
+
+    @property
+    def known_species(self) -> list[str]:
+        """Species this station has been seen to detect (for the watch-list
+        picker in the options flow), sorted alphabetically."""
+        return sorted(self._seen_species)
 
     def _fire_event(self, trigger_type: str, record: dict[str, Any], **extra: Any) -> None:
         device = dr.async_get(self.hass).async_get_device(
