@@ -68,9 +68,9 @@ class BirdWeatherCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._client = BirdWeatherClient(self._session)
 
         # Rarity baseline (topSpecies counts) — refreshed once per calendar day.
-        self._yearly_ranks: dict[str, int] = {}
-        self._yearly_species_count: int = 0
-        self._yearly_fetched_date: date | None = None
+        self._baseline_ranks: dict[str, int] = {}
+        self._baseline_species_count: int = 0
+        self._baseline_fetched_date: date | None = None
 
         # Sticky records — set on first detection, never cleared; persisted.
         self._last_detected: dict[str, Any] | None = None
@@ -95,7 +95,7 @@ class BirdWeatherCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._image_urls: dict[str, str] = {}         # sp_code → image URL
         # sp_code → {image_credit, image_credit_url, image_license, image_license_url}
         self._image_attr: dict[str, dict[str, Any]] = {}
-        self._yearly_items: list[dict[str, Any]] = []
+        self._baseline_items: list[dict[str, Any]] = []
         self._seven_day_data: dict[str, list] = {}
         self._stores_loaded: bool = False
 
@@ -114,20 +114,20 @@ class BirdWeatherCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         today = datetime.now(timezone.utc).date()
 
         # Refresh the rarity baseline once per calendar day.
-        if self._yearly_fetched_date != today:
+        if self._baseline_fetched_date != today:
             try:
-                yearly_raw = await self._client.get_yearly_count(
+                baseline_raw = await self._client.get_baseline_count(
                     self.station_id, months=RARITY_PERIOD_MONTHS
                 )
-                self._yearly_ranks, self._yearly_species_count, self._yearly_items = (
-                    _process_yearly_count(yearly_raw)
+                self._baseline_ranks, self._baseline_species_count, self._baseline_items = (
+                    _process_baseline_count(baseline_raw)
                 )
-                self._yearly_fetched_date = today
-                await self._yearly_store.async_save(self._yearly_items)
+                self._baseline_fetched_date = today
+                await self._yearly_store.async_save(self._baseline_items)
             except (aiohttp.ClientError, BirdWeatherError) as err:
                 _LOGGER.warning("Could not fetch rarity baseline: %s", err)
 
-        if not self._yearly_ranks:
+        if not self._baseline_ranks:
             raise UpdateFailed(
                 "Rarity baseline not yet available — topSpecies fetch failed on "
                 "first poll and there is no cached baseline"
@@ -148,14 +148,14 @@ class BirdWeatherCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         recent_raw = {"detections": _filter_by_dt(daily_raw, now - timedelta(hours=RECENT_WINDOW_HOURS))}
 
         detections = _normalise_detections(recent_raw)
-        _apply_rarity_scores(detections, self._yearly_ranks, self._yearly_species_count)
+        _apply_rarity_scores(detections, self._baseline_ranks, self._baseline_species_count)
 
         daily_count = sorted(
             _normalise_detections(daily_raw),
             key=lambda x: x.get("count", 0),
             reverse=True,
         )
-        _apply_rarity_scores(daily_count, self._yearly_ranks, self._yearly_species_count)
+        _apply_rarity_scores(daily_count, self._baseline_ranks, self._baseline_species_count)
 
         # Snapshot last_seen before the update loop (for absence-gap measuring).
         prior_last_seen = dict(self._last_seen)
@@ -277,8 +277,8 @@ class BirdWeatherCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
         recent_events = _build_recent_events(
             daily_raw,
-            self._yearly_ranks,
-            self._yearly_species_count,
+            self._baseline_ranks,
+            self._baseline_species_count,
             self._image_urls.get,
             LAST_DETECTION_EVENT_LIMIT,
         )
@@ -312,17 +312,18 @@ class BirdWeatherCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 attr_dirty = True
         if attr_dirty:
             await self._image_attr_store.async_save(self._image_attr)
-        _apply_rarity_scores(today_top, self._yearly_ranks, self._yearly_species_count)
+        _apply_rarity_scores(today_top, self._baseline_ranks, self._baseline_species_count)
 
         return {
             "recent_detections": _ranked(detections),
             "last_detection": self._last_detected,
             "recent_events": _ranked(recent_events),
             "notable_detection": self._last_notable,
-            # `daily_count` (the trailing-24h detection list) still feeds the
-            # 7-day rarest rollup, notability, and the extended-silence sensor;
-            # the headline count/top-species now come from true native totals.
-            "daily_count": daily_count,
+            # The trailing-24h detection list still feeds the 7-day rarest
+            # rollup, notability, and the extended-silence sensor. Distinct key
+            # from the `daily_count` *sensor* (which shows today_total) — the
+            # headline count/top-species come from true native totals.
+            "detections_24h": daily_count,
             "daily_top_species": _ranked(today_top),
             "today_total": overview.get("today_total"),
             "today_top": today_top,
@@ -335,7 +336,7 @@ class BirdWeatherCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             "lifetime_species_count": (
                 overview.get("lifetime_species") or len(self._seen_species)
             ),
-            "yearly_top_species": self._build_yearly_top(),
+            "yearly_top_species": self._build_baseline_top(),
             "rarest_species": _ranked(seven_day_rare),
         }
 
@@ -421,7 +422,7 @@ class BirdWeatherCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._last_seen      = last_seen if isinstance(last_seen, dict) else {}
         self._image_urls     = images    if isinstance(images, dict)    else {}
         self._image_attr     = image_attr if isinstance(image_attr, dict) else {}
-        self._yearly_items   = yearly    if isinstance(yearly, list)    else []
+        self._baseline_items   = yearly    if isinstance(yearly, list)    else []
         self._seven_day_data = seven_day if isinstance(seven_day, dict) else {}
 
         if isinstance(sticky, dict):
@@ -432,12 +433,12 @@ class BirdWeatherCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             if isinstance(ln, dict):
                 self._last_notable = ln
 
-        self._yearly_ranks = {
+        self._baseline_ranks = {
             item["species"]: item["rank"]
-            for item in self._yearly_items
+            for item in self._baseline_items
             if isinstance(item, dict) and item.get("species") and item.get("rank")
         }
-        self._yearly_species_count = len(self._yearly_ranks)
+        self._baseline_species_count = len(self._baseline_ranks)
 
         self._stores_loaded = True
 
@@ -513,9 +514,9 @@ class BirdWeatherCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         attr = self._image_attr.get(sp_code) or {}
         return {k: attr.get(k) for k in _ATTR_KEYS}
 
-    def _build_yearly_top(self) -> list[dict[str, Any]]:
+    def _build_baseline_top(self) -> list[dict[str, Any]]:
         result = []
-        for item in self._yearly_items:
+        for item in self._baseline_items:
             sp = item["species"]
             sp_code = self._sp_codes.get(sp, "")
             result.append({
@@ -528,31 +529,17 @@ class BirdWeatherCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             })
         return result
 
-    def _build_daily_list(self, daily_count: list[dict[str, Any]]) -> list[dict[str, Any]]:
-        result = []
-        for item in daily_count:
-            sp = item["species"]
-            sp_code = self._sp_codes.get(sp, "")
-            result.append({
-                **item,
-                "sp_code": sp_code,
-                "scientific_name": self._sci_names.get(sp, ""),
-                "last_seen": self._last_seen.get(sp),
-                "image_url": self._image_urls.get(sp_code),
-            })
-        return result
-
     def _build_new_species_history(self) -> list[dict[str, Any]]:
         if not self._seen_species:
             return []
         sorted_items = sorted(
             self._seen_species.items(), key=lambda kv: kv[1] or "", reverse=True
         )[:NEW_SPECIES_HISTORY_LIMIT]
-        denom = max(self._yearly_species_count, 1)
+        denom = max(self._baseline_species_count, 1)
         result: list[dict[str, Any]] = []
         for species, first_seen in sorted_items:
             sp_code = self._sp_codes.get(species, "")
-            rank = self._yearly_ranks.get(species, self._yearly_species_count)
+            rank = self._baseline_ranks.get(species, self._baseline_species_count)
             result.append({
                 "species": species,
                 "scientific_name": self._sci_names.get(species, ""),
@@ -575,12 +562,12 @@ class BirdWeatherCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     # ------------------------------------------------------------------
 
     @property
-    def yearly_fetched_date(self) -> date | None:
-        return self._yearly_fetched_date
+    def baseline_fetched_date(self) -> date | None:
+        return self._baseline_fetched_date
 
     @property
-    def yearly_species_count(self) -> int:
-        return self._yearly_species_count
+    def baseline_species_count(self) -> int:
+        return self._baseline_species_count
 
     @property
     def lifetime_species_count(self) -> int:
@@ -709,7 +696,7 @@ def _first_seen_per_species(raw: Any) -> dict[str, str]:
     return out
 
 
-def _process_yearly_count(raw: Any) -> tuple[dict[str, int], int, list[dict[str, Any]]]:
+def _process_baseline_count(raw: Any) -> tuple[dict[str, int], int, list[dict[str, Any]]]:
     """Return (species→rank, species_count, items) from a `[{bird, count}]`
     rarity baseline (BirdWeather topSpecies, common-name-keyed)."""
     if not isinstance(raw, list):
@@ -733,12 +720,12 @@ def _process_yearly_count(raw: Any) -> tuple[dict[str, int], int, list[dict[str,
 
 def _apply_rarity_scores(
     detections: list[dict[str, Any]],
-    yearly_ranks: dict[str, int],
-    yearly_species_count: int,
+    baseline_ranks: dict[str, int],
+    baseline_species_count: int,
 ) -> None:
-    denom = max(yearly_species_count, 1)
+    denom = max(baseline_species_count, 1)
     for d in detections:
-        rank = yearly_ranks.get(d["species"], yearly_species_count)
+        rank = baseline_ranks.get(d["species"], baseline_species_count)
         d["yearly_rank"] = rank
         d["rarity_score"] = round(rank / denom, 4)
 
@@ -767,8 +754,8 @@ def _ranked(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
 
 def _build_recent_events(
     raw: Any,
-    yearly_ranks: dict[str, int],
-    yearly_species_count: int,
+    baseline_ranks: dict[str, int],
+    baseline_species_count: int,
     image_url_for,
     limit: int,
 ) -> list[dict[str, Any]]:
@@ -777,7 +764,7 @@ def _build_recent_events(
     items = raw.get("detections", [])
     if not isinstance(items, list):
         return []
-    denom = max(yearly_species_count, 1)
+    denom = max(baseline_species_count, 1)
     events: list[dict[str, Any]] = []
     for item in items:
         if not isinstance(item, dict):
@@ -787,7 +774,7 @@ def _build_recent_events(
             continue
         species = item.get("cn", "Unknown")
         sp_code = item.get("spCode", "")
-        rank = yearly_ranks.get(species, yearly_species_count)
+        rank = baseline_ranks.get(species, baseline_species_count)
         events.append({
             "species": species,
             "scientific_name": item.get("sn", ""),

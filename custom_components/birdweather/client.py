@@ -275,11 +275,11 @@ class BirdWeatherClient:
             )
         return {"detections": out}
 
-    async def get_yearly_count(
+    async def get_baseline_count(
         self, station_id: str, months: int = 1, limit: int = 200
     ) -> list[dict[str, Any]]:
-        """Rarity baseline in the Haikubox yearly-count shape: `[{bird, count}]`,
-        keyed by common name (the pipeline ranks by common name)."""
+        """Rarity baseline as `[{bird, count}]` (the shape the pipeline ranks),
+        keyed by common name. From topSpecies over a trailing `months` window."""
         data = await self._query(
             _TOP_SPECIES_QUERY,
             {"id": station_id, "period": {"count": months, "unit": "month"}, "limit": limit},

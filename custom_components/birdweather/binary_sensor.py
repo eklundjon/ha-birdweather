@@ -32,7 +32,7 @@ class BirdWeatherExtendedSilenceSensor(
     """Problem sensor: on when the station has logged no detections in the
     trailing 24-hour window (an "extended silence").
 
-    Derived from the 24-hour `daily_count` list (empty → nothing heard in 24h).
+    Derived from the 24-hour `detections_24h` list (empty → nothing heard in 24h).
     When the poll itself fails the coordinator goes unavailable, so this sensor
     is unavailable too — "we don't know" rather than a false problem.
     """
@@ -62,4 +62,4 @@ class BirdWeatherExtendedSilenceSensor(
 
     @property
     def is_on(self) -> bool:
-        return not (self.coordinator.data.get("daily_count") or [])
+        return not (self.coordinator.data.get("detections_24h") or [])
