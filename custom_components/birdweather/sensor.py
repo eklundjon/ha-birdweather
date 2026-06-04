@@ -43,6 +43,7 @@ async def async_setup_entry(
             BirdWeatherActivitySensor(coordinator, station_id),
             BirdWeatherNewSpeciesWindowSensor(coordinator, station_id),
             BirdWeatherHistoryDepthSensor(coordinator, station_id),
+            BirdWeatherWatchedSpeciesSensor(coordinator, station_id),
         ]
     )
 
@@ -416,3 +417,30 @@ class BirdWeatherHistoryDepthSensor(_BirdWeatherSensor):
             return datetime.fromisoformat(earliest)
         except ValueError:
             return None
+
+
+class BirdWeatherWatchedSpeciesSensor(_BirdWeatherSensor):
+    """Your watch-list species that this station has detected ("Birds of
+    interest"), most-recently-heard first. State = how many are on record;
+    `detections` is the list for the bird-list card. Configure the watch-list
+    in the integration's options. Species you watch but the station hasn't
+    recorded don't appear here — the watched-species device trigger covers
+    their arrival.
+    """
+
+    _attr_translation_key = "watched_species"
+    _attr_icon = "mdi:star"
+    _attr_native_unit_of_measurement = "species"
+    _attr_state_class = SensorStateClass.MEASUREMENT
+
+    def __init__(self, coordinator: BirdWeatherCoordinator, station_id: str) -> None:
+        super().__init__(coordinator, station_id)
+        self._attr_unique_id = f"{station_id}_watched_species"
+
+    @property
+    def native_value(self) -> int:
+        return len(self.coordinator.data.get("watched_species", []))
+
+    @property
+    def extra_state_attributes(self) -> dict:
+        return {"detections": self.coordinator.data.get("watched_species", [])}

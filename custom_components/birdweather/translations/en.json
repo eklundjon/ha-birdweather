@@ -64,7 +64,8 @@
       "species_diversity": { "name": "Species diversity (24 h)" },
       "activity_level": { "name": "Activity vs. typical" },
       "new_species_window": { "name": "New species (30 d)" },
-      "history_start": { "name": "Detection history start" }
+      "history_start": { "name": "Detection history start" },
+      "watched_species": { "name": "Watched species" }
     },
     "binary_sensor": {
       "extended_silence": { "name": "Extended silence (24 h)" }
