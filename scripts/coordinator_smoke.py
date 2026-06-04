@@ -36,10 +36,10 @@ async def main(station_id: str) -> None:
         coord._client = BirdWeatherClient(session)
         coord.config_entry = _FakeEntry()
         coord.hass = None  # only used by _fire_event, which won't run on poll 1
-        coord._yearly_ranks = {}
-        coord._yearly_species_count = 0
-        coord._yearly_fetched_date = None
-        coord._yearly_items = []
+        coord._baseline_ranks = {}
+        coord._baseline_species_count = 0
+        coord._baseline_fetched_date = None
+        coord._baseline_items = []
         coord._last_detected = None
         coord._last_notable = None
         coord._seen_species = {}
@@ -71,7 +71,7 @@ async def main(station_id: str) -> None:
             return f"{v.get('species')!r}"
         return repr(v)
 
-    for k in ("recent_detections", "last_detection", "daily_count",
+    for k in ("recent_detections", "last_detection", "detections_24h",
               "daily_top_species", "notable_detection", "new_detection",
               "lifetime_species_count", "yearly_top_species", "rarest_species"):
         print(f"  {k:22} -> {head(k)}")
