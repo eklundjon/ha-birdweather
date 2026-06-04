@@ -54,8 +54,16 @@ NEW_SPECIES_WINDOW_DAYS = 30  # species first heard within this many days = "new
 EVENT_BIRDWEATHER = "birdweather_event"
 TRIGGER_NEW_SPECIES = "new_species"
 TRIGGER_UNUSUAL_VISITOR = "unusual_visitor"
-TRIGGER_TYPES = (TRIGGER_NEW_SPECIES, TRIGGER_UNUSUAL_VISITOR)
+TRIGGER_WATCHED_SPECIES = "watched_species"  # a user-chosen species was detected
+TRIGGER_TYPES = (TRIGGER_NEW_SPECIES, TRIGGER_UNUSUAL_VISITOR, TRIGGER_WATCHED_SPECIES)
 
 # unusual_visitor: known species reappearing after >= this many days unheard.
 CONF_ABSENCE_DAYS = "absence_days"
 DEFAULT_ABSENCE_DAYS = 30
+
+# watched_species: fire the watched_species trigger when one of these is heard.
+# Two options-flow inputs combine into the watch set: a multi-select picked from
+# species the station has already detected, plus a free-text list (one common
+# name per line) for species not yet seen here (the aspirational case).
+CONF_WATCHED_SPECIES = "watched_species"       # list[str] from the pick-list
+CONF_WATCHED_EXTRA = "watched_species_extra"   # newline-separated free text

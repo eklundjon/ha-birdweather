@@ -21,7 +21,8 @@ It reads the **public** BirdWeather GraphQL API anonymously — no account or AP
 - **Detection history start** — diagnostic timestamp of the station's earliest recorded detection
 - **Extended silence** — diagnostic problem sensor that flags when a station goes a full day without reporting
 - **Custom Lovelace cards** — a bird photo card and a ranked list card
-- **Automations** — device triggers for new-species and unusual-visitor detections
+- **Automations** — device triggers for new-species, unusual-visitor, and watched-species detections
+- **Watched species** — pick (or type) species to be alerted about; a device trigger fires when one is heard
 
 ## Quick start
 
@@ -75,6 +76,7 @@ After setup, open the integration's **Configure** dialog to tune:
 
 - **Notability rarity weight** — how much the "notable species" pick leans on rarity vs. recency (100% = pure rarity; default 70%).
 - **Unusual-visitor days** — how long a known species must go unheard before its reappearance counts as an unusual visitor (default 30 days).
+- **Watched species** — choose species (from a pick-list of ones your station has detected, and/or a free-text list for ones it hasn't) to be alerted about. When a watched species is heard, the **"Watched species detected"** device trigger fires — wire it to a notification in the automation editor.
 
 ## Troubleshooting
 
