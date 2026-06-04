@@ -280,6 +280,22 @@ class BirdWeatherBirdListCard extends HTMLElement {
     return anchors ? `<div class="${cls}">${anchors}</div>` : "";
   }
 
+  // Photo credit/license for the expanded view. The coordinator sanitises
+  // BirdWeather's HTML credit to plain text + URL, so these are safe to link.
+  // The station photos are CC-licensed, which requires attribution.
+  _attributionBlock(item) {
+    if (this._config?.show_attribution === false || !item.image_url) return "";
+    const link = (text, url) =>
+      url
+        ? `<a href="${_esc(url)}" target="_blank" rel="noopener noreferrer">${_esc(text)}</a>`
+        : _esc(text);
+    const parts = [];
+    if (item.image_credit) parts.push(link(item.image_credit, item.image_credit_url));
+    if (item.image_license) parts.push(link(item.image_license, item.image_license_url));
+    if (!parts.length) return "";
+    return `<div class="detail-attribution">📷 ${parts.join(" · ")}</div>`;
+  }
+
   _relativeTime(isoString) {
     if (!isoString) return null;
     // Clamp: a future timestamp (clock skew) must not show "-3s ago".
@@ -536,6 +552,12 @@ class BirdWeatherBirdListCard extends HTMLElement {
           gap: 8px;
           margin-top: 10px;
         }
+        .detail-attribution {
+          margin-top: 10px;
+          font-size: 0.72em;
+          color: var(--secondary-text-color);
+        }
+        .detail-attribution a { color: inherit; }
         .metrics {
           display: flex;
           flex-wrap: wrap;
@@ -595,6 +617,7 @@ class BirdWeatherBirdListCard extends HTMLElement {
                         ${t ? `<div class="metric">last heard <strong data-last-seen="${_esc(item.last_seen)}">${_esc(t)}</strong></div>` : ""}
                       </div>
                       ${this._linksBlock(item, true, true, "detail-links")}
+                      ${this._attributionBlock(item)}
                     </div>
                   </div>
                 </div>

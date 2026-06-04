@@ -47,12 +47,14 @@ async def main(station_id: str) -> None:
         coord._sci_names = {}
         coord._last_seen = {}
         coord._image_urls = {}
+        coord._image_attr = {}
         coord._seven_day_data = {}
         coord._prev_recent_species = None
         coord._stores_loaded = True  # skip _load_stores
         for attr in (
             "_store", "_sp_codes_store", "_sci_names_store", "_last_seen_store",
-            "_images_store", "_yearly_store", "_seven_day_store", "_sticky_store",
+            "_images_store", "_image_attr_store", "_yearly_store",
+            "_seven_day_store", "_sticky_store",
         ):
             setattr(coord, attr, _FakeStore())
 
@@ -82,8 +84,18 @@ async def main(station_id: str) -> None:
     ld = data.get("last_detection") or {}
     print("\nlast_detection record:")
     for f in ("species", "scientific_name", "sp_code", "image_url", "audio_url",
-              "confidence", "last_seen", "rarity_score"):
-        print(f"  {f:16} {ld.get(f)!r}")
+              "confidence", "last_seen", "rarity_score",
+              "image_credit", "image_credit_url", "image_license", "image_license_url"):
+        print(f"  {f:18} {ld.get(f)!r}")
+
+    for key in ("daily_top_species", "yearly_top_species", "rarest_species"):
+        lst = data.get(key) or []
+        if lst:
+            r = lst[0]
+            print(f"\n{key}[0] attribution: {r.get('species')!r} -> "
+                  f"credit={r.get('image_credit')!r} license={r.get('image_license')!r} "
+                  f"credit_url={'yes' if r.get('image_credit_url') else None} "
+                  f"license_url={'yes' if r.get('image_license_url') else None}")
 
 
 if __name__ == "__main__":

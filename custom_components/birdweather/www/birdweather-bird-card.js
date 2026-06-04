@@ -42,6 +42,7 @@ class BirdWeatherBirdCardEditor extends HTMLElement {
         this._pathField.value = this._pathValue;
         this._syncPathField();
       }
+      if (this._attrField) this._attrField.value = config.show_attribution !== false;
     }
   }
 
@@ -188,6 +189,20 @@ class BirdWeatherBirdCardEditor extends HTMLElement {
       this._pathField = path;
       this.appendChild(path);
       this._syncPathField();
+
+      // Photo credit toggle (default on). The station photos are CC-licensed,
+      // so the credit is normally required — hiding it may breach the licence.
+      const attr = document.createElement("ha-selector");
+      attr.label = "Show photo credit";
+      attr.selector = { boolean: {} };
+      if (this._hass) attr.hass = this._hass;
+      attr.value = this._config?.show_attribution !== false;
+      attr.style.cssText = "display:block;padding:0 16px 16px";
+      attr.addEventListener("value-changed", (e) =>
+        this._fire({ show_attribution: e.detail.value })
+      );
+      this._attrField = attr;
+      this.appendChild(attr);
     }
   }
 }
@@ -394,6 +409,21 @@ class BirdWeatherBirdCard extends HTMLElement {
     dialog.showModal();
   }
 
+  // Photo credit/license caption. The coordinator sanitises BirdWeather's
+  // (HTML) credit into plain text + a URL, so these are safe to link. Shown
+  // because the station photos are CC-licensed and require attribution.
+  _attributionHtml(bird) {
+    const link = (text, url) =>
+      url
+        ? `<a href="${_esc(url)}" target="_blank" rel="noopener noreferrer">${_esc(text)}</a>`
+        : _esc(text);
+    const parts = [];
+    if (bird.image_credit) parts.push(link(bird.image_credit, bird.image_credit_url));
+    if (bird.image_license) parts.push(link(bird.image_license, bird.image_license_url));
+    if (!parts.length) return "";
+    return `<div class="attribution" title="Photo credit">📷 ${parts.join(" · ")}</div>`;
+  }
+
   _render() {
     // Defensive: HA's card lifecycle is normally setConfig → set hass
     // (which calls _render), but during a reload or first-mount edge
@@ -411,7 +441,16 @@ class BirdWeatherBirdCard extends HTMLElement {
     // `position` (1-based) selects which ranked entry to show.
     const top = Array.isArray(attrs.detections) ? attrs.detections[this._index()] : null;
     const bird = top
-      ? { species: top.species, image_url: top.image_url, scientific_name: top.scientific_name, last_seen: top.last_seen }
+      ? {
+          species: top.species,
+          image_url: top.image_url,
+          scientific_name: top.scientific_name,
+          last_seen: top.last_seen,
+          image_credit: top.image_credit,
+          image_credit_url: top.image_credit_url,
+          image_license: top.image_license,
+          image_license_url: top.image_license_url,
+        }
       : null;
     const empty = !bird || !bird.species;
     const actionable = (this._config.tap_action?.action ?? "more-info") !== "none";
@@ -451,6 +490,7 @@ class BirdWeatherBirdCard extends HTMLElement {
          */
         .img-wrap {
           flex: 0 0 auto;
+          position: relative;
           /*
            * Portrait: photo height = card width (square), but not more than
            * card height minus a text area. The reserve grows with card
@@ -579,6 +619,27 @@ class BirdWeatherBirdCard extends HTMLElement {
           color: var(--secondary-text-color);
           font-style: italic;
         }
+        /* Photo credit/license — required for the CC-licensed station photos. */
+        .attribution {
+          position: absolute;
+          right: 0;
+          bottom: 0;
+          max-width: 100%;
+          box-sizing: border-box;
+          padding: 1px 6px;
+          font-size: clamp(0.6rem, 1.3cqw + 0.4cqh, 0.72rem);
+          line-height: 1.3;
+          color: #fff;
+          background: rgba(0, 0, 0, 0.45);
+          border-top-left-radius: 4px;
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+        }
+        .attribution a {
+          color: inherit;
+          text-decoration: underline;
+        }
       </style>
       <ha-card class="${actionable ? "actionable" : ""}"${actionable ? ' role="button" tabindex="0"' : ""}>
         <div class="layout">
@@ -589,6 +650,9 @@ class BirdWeatherBirdCard extends HTMLElement {
               ${bird.image_url
                 ? `<img src="${_esc(bird.image_url)}" alt="${_esc(bird.species)}">`
                 : `<div class="img-placeholder">🐦</div>`}
+              ${bird.image_url && this._config.show_attribution !== false
+                ? this._attributionHtml(bird)
+                : ""}
             </div>
             <div class="body">
               <div class="text-group">
@@ -613,6 +677,13 @@ class BirdWeatherBirdCard extends HTMLElement {
         img.replaceWith(placeholder);
       });
     }
+
+    // Let credit/license links work without also triggering the card's tap
+    // action (more-info), and without keyboard activation bubbling up.
+    this.shadowRoot.querySelectorAll(".attribution a").forEach((a) => {
+      a.addEventListener("click", (e) => e.stopPropagation());
+      a.addEventListener("keydown", (e) => e.stopPropagation());
+    });
 
     if (actionable) {
       const card = this.shadowRoot.querySelector("ha-card");

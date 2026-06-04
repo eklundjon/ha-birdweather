@@ -19,7 +19,9 @@ imageUrl,thumbnailUrl,ebirdUrl,wikipediaUrl,...}`.
 
 from __future__ import annotations
 
+import html
 import math
+import re
 from datetime import date
 from typing import Any
 
@@ -70,6 +72,9 @@ query stationDetections($id: ID!, $first: Int) {
           ebirdCode
           imageUrl
           thumbnailUrl
+          imageCredit
+          imageLicense
+          imageLicenseUrl
           ebirdUrl
           wikipediaUrl
         }
@@ -88,6 +93,10 @@ query stationTopSpecies($id: ID!, $period: InputDuration, $limit: Int) {
         commonName
         scientificName
         ebirdCode
+        imageUrl
+        imageCredit
+        imageLicense
+        imageLicenseUrl
       }
     }
   }
@@ -116,7 +125,15 @@ query stationOverview(
     life: counts(period: $life) { species }
     todayTop: topSpecies(period: $today, limit: 200) {
       count
-      species { commonName scientificName ebirdCode imageUrl }
+      species {
+        commonName
+        scientificName
+        ebirdCode
+        imageUrl
+        imageCredit
+        imageLicense
+        imageLicenseUrl
+      }
     }
     recent: topSpecies(period: $recent, limit: 1000) { species { commonName } }
     hist: topSpecies(period: $hist, limit: 2000) { species { commonName } }
@@ -253,6 +270,7 @@ class BirdWeatherClient:
                     "image": sp.get("imageUrl"),
                     "audio": (n.get("soundscape") or {}).get("url"),
                     "confidence": n.get("confidence"),
+                    **_species_attribution(sp),
                 }
             )
         return {"detections": out}
@@ -322,6 +340,7 @@ class BirdWeatherClient:
                     "sp_code": sp.get("ebirdCode") or "",
                     "image_url": sp.get("imageUrl"),
                     "count": int(n.get("count") or 0),
+                    **_species_attribution(sp),
                 }
             )
 
@@ -369,6 +388,35 @@ class BirdWeatherClient:
 
 # --- normalisation -----------------------------------------------------------
 
+_HREF_RE = re.compile(r'href="([^"]+)"', re.IGNORECASE)
+_TAG_RE = re.compile(r"<[^>]+>")
+
+
+def _parse_image_credit(raw: str | None) -> tuple[str | None, str | None]:
+    """BirdWeather's `imageCredit` is HTML (usually a single `<a href>` to a
+    Wikimedia/contributor page). Return `(plain-text credit, href)` — never the
+    raw HTML, so it's safe to put in a state attribute / render as plain text.
+    """
+    if not raw:
+        return None, None
+    m = _HREF_RE.search(raw)
+    url = html.unescape(m.group(1)) if m else None
+    if url and url.startswith("//"):  # protocol-relative → https
+        url = "https:" + url
+    text = html.unescape(_TAG_RE.sub("", raw)).strip()
+    return (text or None), (url or None)
+
+
+def _species_attribution(sp: dict[str, Any]) -> dict[str, Any]:
+    """Photo credit/license for a Species node, as clean (non-HTML) fields."""
+    credit, credit_url = _parse_image_credit(sp.get("imageCredit"))
+    return {
+        "image_credit": credit,
+        "image_credit_url": credit_url,
+        "image_license": sp.get("imageLicense") or None,
+        "image_license_url": sp.get("imageLicenseUrl") or None,
+    }
+
 
 def _clean_station(node: dict[str, Any]) -> dict[str, Any]:
     return {
@@ -400,6 +448,7 @@ def _normalise_detection(node: dict[str, Any]) -> dict[str, Any]:
         "audio_url": (node.get("soundscape") or {}).get("url"),
         "ebird_url": sp.get("ebirdUrl"),
         "wikipedia_url": sp.get("wikipediaUrl"),
+        **_species_attribution(sp),
     }
 
 

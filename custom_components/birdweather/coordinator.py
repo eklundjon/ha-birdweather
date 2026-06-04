@@ -82,6 +82,7 @@ class BirdWeatherCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._sci_names_store  = Store(hass, _STORE_VERSION, f"{DOMAIN}.{station_id}.sci_names")
         self._last_seen_store  = Store(hass, _STORE_VERSION, f"{DOMAIN}.{station_id}.last_seen")
         self._images_store     = Store(hass, _STORE_VERSION, f"{DOMAIN}.{station_id}.image_urls")
+        self._image_attr_store = Store(hass, _STORE_VERSION, f"{DOMAIN}.{station_id}.image_attr")
         self._yearly_store     = Store(hass, _STORE_VERSION, f"{DOMAIN}.{station_id}.yearly")
         self._seven_day_store  = Store(hass, _STORE_VERSION, f"{DOMAIN}.{station_id}.seven_day")
         self._sticky_store     = Store(hass, _STORE_VERSION, f"{DOMAIN}.{station_id}.sticky")
@@ -92,6 +93,8 @@ class BirdWeatherCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._sci_names: dict[str, str] = {}          # species → scientific_name
         self._last_seen: dict[str, str] = {}          # species → last_seen ISO
         self._image_urls: dict[str, str] = {}         # sp_code → image URL
+        # sp_code → {image_credit, image_credit_url, image_license, image_license_url}
+        self._image_attr: dict[str, dict[str, Any]] = {}
         self._yearly_items: list[dict[str, Any]] = []
         self._seven_day_data: dict[str, list] = {}
         self._stores_loaded: bool = False
@@ -159,6 +162,7 @@ class BirdWeatherCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
         # Update sp_codes / scientific_name / last_seen / image lookups.
         sp_codes_dirty = sci_names_dirty = last_seen_dirty = images_dirty = False
+        image_attr_dirty = False
         for d in detections:
             sp = d["species"]
             if d.get("sp_code") and sp not in self._sp_codes:
@@ -171,6 +175,8 @@ class BirdWeatherCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 if self._image_urls.get(d["sp_code"]) != d["image_url"]:
                     self._image_urls[d["sp_code"]] = d["image_url"]
                     images_dirty = True
+            if self._cache_image_attr(d.get("sp_code", ""), d):
+                image_attr_dirty = True
             ts = d.get("last_seen")
             if ts and ts > self._last_seen.get(sp, ""):
                 self._last_seen[sp] = ts
@@ -192,6 +198,8 @@ class BirdWeatherCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     if d.get("image_url") and self._image_urls.get(d["sp_code"]) != d["image_url"]:
                         self._image_urls[d["sp_code"]] = d["image_url"]
                         images_dirty = True
+                if self._cache_image_attr(d.get("sp_code", ""), d):
+                    image_attr_dirty = True
                 if d.get("scientific_name") and sp not in self._sci_names:
                     self._sci_names[sp] = d["scientific_name"]
                     sci_names_dirty = True
@@ -212,6 +220,8 @@ class BirdWeatherCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             await self._last_seen_store.async_save(self._last_seen)
         if images_dirty:
             await self._images_store.async_save(self._image_urls)
+        if image_attr_dirty:
+            await self._image_attr_store.async_save(self._image_attr)
 
         # Live new-species detection from the recent window.
         newly_seen: set[str] = set()
@@ -291,9 +301,17 @@ class BirdWeatherCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             overview = {}
 
         # Today's top species (true counts), enriched with the rarity baseline.
+        # These records carry photo attribution from the API; fold it into the
+        # cache so the baseline/new-species lists can show it for species that
+        # only appear here (not in the recent detection feed).
         today_top = list(overview.get("today_top") or [])
+        attr_dirty = False
         for rec in today_top:
             rec["last_seen"] = self._last_seen.get(rec["species"])
+            if self._cache_image_attr(rec.get("sp_code", ""), rec):
+                attr_dirty = True
+        if attr_dirty:
+            await self._image_attr_store.async_save(self._image_attr)
         _apply_rarity_scores(today_top, self._yearly_ranks, self._yearly_species_count)
 
         return {
@@ -392,6 +410,7 @@ class BirdWeatherCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         sci_names = await self._sci_names_store.async_load()
         last_seen = await self._last_seen_store.async_load()
         images    = await self._images_store.async_load()
+        image_attr = await self._image_attr_store.async_load()
         yearly    = await self._yearly_store.async_load()
         seven_day = await self._seven_day_store.async_load()
         sticky    = await self._sticky_store.async_load()
@@ -401,6 +420,7 @@ class BirdWeatherCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._sci_names      = sci_names if isinstance(sci_names, dict) else {}
         self._last_seen      = last_seen if isinstance(last_seen, dict) else {}
         self._image_urls     = images    if isinstance(images, dict)    else {}
+        self._image_attr     = image_attr if isinstance(image_attr, dict) else {}
         self._yearly_items   = yearly    if isinstance(yearly, list)    else []
         self._seven_day_data = seven_day if isinstance(seven_day, dict) else {}
 
@@ -465,12 +485,33 @@ class BirdWeatherCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
         ordered = sorted(merged.values(), key=lambda x: x.get("rarity_score", 0), reverse=True)
         for rec in ordered:
-            rec["image_url"] = self._image_urls.get(rec.get("sp_code", ""))
+            sp_code = rec.get("sp_code", "")
+            rec["image_url"] = self._image_urls.get(sp_code)
+            rec.update(self._image_attribution(sp_code))
         return ordered
 
     # ------------------------------------------------------------------
     # Dataset builders (store-only, no API calls)
     # ------------------------------------------------------------------
+
+    def _cache_image_attr(self, sp_code: str, record: dict[str, Any]) -> bool:
+        """Remember a species' photo credit/license (keyed by sp_code) so sticky
+        and store-built records keep their attribution. Returns True if changed.
+        """
+        if not sp_code:
+            return False
+        attr = {k: record.get(k) for k in _ATTR_KEYS}
+        if not any(attr.values()):  # nothing worth caching yet
+            return False
+        if self._image_attr.get(sp_code) != attr:
+            self._image_attr[sp_code] = attr
+            return True
+        return False
+
+    def _image_attribution(self, sp_code: str) -> dict[str, Any]:
+        """Cached photo credit/license for a species code (None values if unknown)."""
+        attr = self._image_attr.get(sp_code) or {}
+        return {k: attr.get(k) for k in _ATTR_KEYS}
 
     def _build_yearly_top(self) -> list[dict[str, Any]]:
         result = []
@@ -483,6 +524,7 @@ class BirdWeatherCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 "scientific_name": self._sci_names.get(sp, ""),
                 "last_seen": self._last_seen.get(sp),
                 "image_url": self._image_urls.get(sp_code),
+                **self._image_attribution(sp_code),
             })
         return result
 
@@ -520,6 +562,7 @@ class BirdWeatherCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 "first_seen": first_seen,
                 "rarity_score": round(rank / denom, 4),
                 "yearly_rank": rank,
+                **self._image_attribution(sp_code),
             })
         return result
 
@@ -581,6 +624,11 @@ def _filter_by_dt(raw: Any, threshold: datetime) -> list[dict[str, Any]]:
     return out
 
 
+# Photo credit/license keys threaded from the client onto every record so the
+# cards can show attribution (CC BY-SA images require it).
+_ATTR_KEYS = ("image_credit", "image_credit_url", "image_license", "image_license_url")
+
+
 def _normalise_detections(raw: Any) -> list[dict[str, Any]]:
     """Collapse the flat event list to one record per species, newest first.
 
@@ -615,6 +663,7 @@ def _normalise_detections(raw: Any) -> list[dict[str, Any]]:
                 "count": 0,
                 "rarity_score": 0.0,
                 "yearly_rank": 0,
+                **{k: item.get(k) for k in _ATTR_KEYS},
             }
         rec = by_species[key]
         rec["count"] += 1
@@ -749,6 +798,7 @@ def _build_recent_events(
             "confidence": item.get("confidence"),
             "rarity_score": round(rank / denom, 4),
             "yearly_rank": rank,
+            **{k: item.get(k) for k in _ATTR_KEYS},
         })
     events.sort(key=lambda e: e.get("last_seen") or "", reverse=True)
     return events[:limit]

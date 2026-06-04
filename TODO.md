@@ -3,21 +3,18 @@
 Backlog for the BirdWeather integration (PoC stage). Convert to GitHub issues
 when the repo is pushed.
 
-## Image attribution / licensing  ⚠️ before any public release
+## Image attribution / licensing  ✅ done
 
-We display BirdWeather `Species.imageUrl` photos **without their credit/license**.
-Those are licensed images (often Macaulay Library / contributor photos), so
-attribution is likely required.
+Photo credit/license is now fetched (`imageCredit`/`imageLicense`/
+`imageLicenseUrl`), sanitised from BirdWeather's HTML credit to plain text + a
+URL in `client.py`, cached per species, threaded onto every record, and shown
+as a caption on the bird card (overlay) and the list card (detail view).
+Default on, with a "Show photo credit" card toggle (`show_attribution`).
 
-- The GraphQL `Species` type also exposes `imageCredit`, `imageLicense`,
-  `imageLicenseUrl`. Add them to the species sub-selection in
-  `client.py` (`_DETECTIONS_QUERY`, and the topSpecies/station queries as
-  relevant).
-- Thread them through `get_raw_detections()` → `_normalise_detections()` onto
-  each record (e.g. `image_credit`, `image_license`, `image_license_url`).
-- Surface them: a small caption/attribution on the bird card (and/or expose as
-  state attributes). At minimum, credit + license text near the photo.
-- Decide policy: show attribution always, or make it a card toggle.
+Possible follow-ups:
+- Some images have no credit/license from the API (caption is omitted) — could
+  fall back to a generic "Photo: BirdWeather" line.
+- `imageCredit` is occasionally a bare URL rather than a name; left as-is.
 
 ## Surface BirdWeather-only data the pipeline already carries
 
