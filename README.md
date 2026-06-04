@@ -76,6 +76,24 @@ After setup, open the integration's **Configure** dialog to tune:
 - **Notability rarity weight** — how much the "notable species" pick leans on rarity vs. recency (100% = pure rarity; default 70%).
 - **Unusual-visitor days** — how long a known species must go unheard before its reappearance counts as an unusual visitor (default 30 days).
 
+## Troubleshooting
+
+**A bird photo looks oddly cropped (a beak, tail, or head cut off).**
+The photos come from BirdWeather, which serves one square crop of a contributor
+photo per species — and a few are cropped tightly at the source. The cards
+always show the *whole* image and never crop it further (the soft blurred edges
+you may see are just fill), so a clipped subject means BirdWeather's own image is
+cropped that way. It can't be corrected from Home Assistant; if a photo looks
+wrong, it's worth reporting to BirdWeather.
+
+**A card shows a 🐦 placeholder instead of a photo.**
+BirdWeather has no image for that species yet, or it failed to load; it appears
+once a photo is available and the next poll caches it.
+
+**A card looks stale right after updating the integration.**
+Hard-refresh the dashboard — the card JavaScript is cached by your browser and
+only re-fetched when the integration version changes.
+
 ## Attribution & data licensing
 
 This integration surfaces data from the **BirdWeather** public API — detections,

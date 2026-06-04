@@ -198,3 +198,17 @@ tiers above. Still open:
 Sources: kyleniewiada BirdNET-Go writeup; rhett.cc BirdNET-Pi→HA MQTT guide; HA
 community BirdWeather-PUC and BirdNET-Go detection threads; WhosAtMyFeeder
 (Frigate camera ID).
+
+## Known limitations (upstream — not client-fixable)
+
+- **Tightly-cropped species photos.** BirdWeather serves one **400×400 square**
+  crop per species (a contributor/Wikimedia image), and some are cropped tight
+  enough to clip the bird. The card uses `object-fit: contain` (+ blur-fill), so
+  it shows the *whole* file and never crops further — but it can't recover pixels
+  BirdWeather already cut, and `standard`/`thumbnail` share the same crop. Not
+  fixable from HA; documented in the README troubleshooting section. Sourcing the
+  full image elsewhere (Wikimedia/eBird via `wikipediaUrl`/`ebirdUrl`) is the only
+  workaround and isn't worth the licensing/complexity for occasional bad crops.
+  - Running list of clipped species worth reporting upstream to BirdWeather:
+    - **Painted Bunting** (`Passerina ciris`, species 2376) — beak clipped at the
+      right edge (image credit: Doug Janson, CC BY-SA 3.0).
