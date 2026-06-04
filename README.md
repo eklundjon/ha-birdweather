@@ -1,0 +1,93 @@
+# BirdWeather for Home Assistant
+
+[![hacs_badge](https://img.shields.io/badge/HACS-Custom-orange.svg)](https://github.com/hacs/integration)
+[![HA Version](https://img.shields.io/badge/Home%20Assistant-2024.12+-blue.svg?logo=homeassistant)](https://www.home-assistant.io)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
+A Home Assistant custom integration for [BirdWeather](https://www.birdweather.com/) stations (PUC, BirdNET-Pi, and other registered stations). Surfaces recent detections, daily and rolling species counts, activity and diversity trends, and highlights unusual visitors — all with bird photos and custom Lovelace cards.
+
+It reads the **public** BirdWeather GraphQL API anonymously — no account or API token is needed for any station whose owner has made it public.
+
+## Features
+
+- **Recent detections** — species heard in the last hour, updated every few minutes
+- **Last detection** — persists the most recently heard bird, never goes unknown between detections
+- **Rolling 24-hour counts** — true total detections and top species over the trailing 24 hours
+- **Species diversity (24 h)** — Shannon index over the last day, with richness and evenness attributes
+- **Activity vs. typical** — how busy the station is right now relative to its own 30-day average (1.0 ≈ a normal day)
+- **Notable species** — most unusual recent visitor, by a tunable blend of rarity (vs. the station's trailing baseline) and recency
+- **New species** — flags species new to the station, plus a rolling "new species in the last 30 days" momentum count
+- **Bird-detail sensors** — top species (baseline), rarest species (7 d), lifetime species count
+- **Detection history start** — diagnostic timestamp of the station's earliest recorded detection
+- **Extended silence** — diagnostic problem sensor that flags when a station goes a full day without reporting
+- **Custom Lovelace cards** — a bird photo card and a ranked list card
+- **Automations** — device triggers for new-species and unusual-visitor detections
+
+## Quick start
+
+### Install
+
+**HACS (recommended)**
+
+1. In **HACS**, open the **⋮** menu (top right) → **Custom repositories**
+2. Add `https://github.com/eklundjon/ha-birdweather`, type **Integration**, then **Add**
+3. Search HACS for **BirdWeather**, open it, and click **Download**
+4. Restart Home Assistant
+
+**Manual**
+
+1. Copy the `custom_components/birdweather` folder into your HA `config/custom_components/` directory
+2. Restart Home Assistant
+
+### Configure
+
+1. Go to **Settings → Devices & Services → Add Integration**.
+2. Search for **BirdWeather**.
+3. Pick a nearby public station from the list, type a name to search, or paste a numeric **station ID** directly.
+
+> **Finding your station ID.** On [app.birdweather.com](https://app.birdweather.com), open your station — the ID is the number in the URL (`.../stations/<id>`). The station must be **public** for the integration to read it.
+
+A device is created and named after the station, with the sensors above plus an "extended silence" binary sensor.
+
+### Add a card
+
+Both custom cards register automatically — no Lovelace resource setup required. The simplest "show me a bird" card:
+
+```yaml
+type: custom:birdweather-bird-card
+entity: sensor.<station>_last_detection
+```
+
+A ranked list (e.g. top species over the last 24 hours):
+
+```yaml
+type: custom:birdweather-bird-list-card
+entity: sensor.<station>_daily_top_species
+```
+
+## Options
+
+After setup, open the integration's **Configure** dialog to tune:
+
+- **Notability rarity weight** — how much the "notable species" pick leans on rarity vs. recency (100% = pure rarity; default 70%).
+- **Unusual-visitor days** — how long a known species must go unheard before its reappearance counts as an unusual visitor (default 30 days).
+
+## Attribution & data licensing
+
+This integration surfaces data from the **BirdWeather** public API — detections,
+species counts, and the bird photos served from its media CDN. BirdWeather data is
+powered by [BirdNET](https://birdnet.cornell.edu/); if you use it for research,
+please cite BirdNET:
+
+> Kahl, S., Wood, C. M., Eibl, M., & Klinck, H. (2021). BirdNET: A deep learning
+> solution for avian diversity monitoring. *Ecological Informatics*, 61, 101236.
+
+Bird photographs are served by BirdWeather and may be individually licensed by
+their contributors; review BirdWeather's terms before any redistribution or
+commercial use.
+
+## License
+
+MIT License — see [LICENSE](LICENSE) for details. This applies to the
+integration's **code**. The bird data and photos it surfaces (BirdWeather /
+BirdNET and contributors) are covered by their own terms, not by the MIT license.

@@ -1,12 +1,12 @@
 {
   "domain": "birdweather",
   "name": "BirdWeather",
-  "version": "0.1.0",
-  "config_flow": true,
-  "documentation": "https://github.com/eklundjon/ha-birdweather",
-  "issue_tracker": "https://github.com/eklundjon/ha-birdweather/issues",
   "codeowners": ["@eklundjon"],
+  "config_flow": true,
   "dependencies": ["http", "frontend"],
+  "documentation": "https://github.com/eklundjon/ha-birdweather",
+  "integration_type": "device",
   "iot_class": "cloud_polling",
-  "integration_type": "device"
+  "issue_tracker": "https://github.com/eklundjon/ha-birdweather/issues",
+  "version": "0.1.0"
 }
