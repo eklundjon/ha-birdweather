@@ -29,6 +29,10 @@ It reads the **public** BirdWeather GraphQL API anonymously — no account or AP
 
 **HACS (recommended)**
 
+[![Open your Home Assistant instance and open a repository inside the Home Assistant Community Store.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=eklundjon&repository=ha-birdweather&category=integration)
+
+Click the badge to open HACS in your Home Assistant with this repository pre-filled, then **Download** and restart. Or add it manually:
+
 1. In **HACS**, open the **⋮** menu (top right) → **Custom repositories**
 2. Add `https://github.com/eklundjon/ha-birdweather`, type **Integration**, then **Add**
 3. Search HACS for **BirdWeather**, open it, and click **Download**
