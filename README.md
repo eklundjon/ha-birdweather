@@ -24,6 +24,7 @@ It reads the **public** BirdWeather GraphQL API anonymously — no account or AP
 - **Automations** — device triggers for new-species, unusual-visitor, and watched-species detections
 - **Watched species** — pick (or type) species to be alerted about; a device trigger fires when one is heard, plus a **Watched species** sensor listing the ones your station has recorded (drop it into the list card for a "Birds of interest" view)
 - **Confidence controls** — optional thresholds to hide low-confidence "maybe" detections from the feed and to gate alerts on confident hits only (independent, so you can see maybes but only be pinged on sure things); the cards show a low/medium/high confidence band
+- **PUC hardware sensors** — for BirdWeather **PUC** stations, onboard environment readings (temperature, humidity, barometric pressure, sound level, air quality, light) and device-health diagnostics (battery voltage, power source, Wi-Fi signal, SD-card free) — created automatically, and only for the hardware your station actually reports (a BirdNET-Pi gets none)
 
 ## Quick start
 

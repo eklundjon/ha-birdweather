@@ -157,6 +157,42 @@ query station($id: ID!) {
 """
 
 
+# Onboard PUC hardware sensors. Each sub-suite is null on stations without that
+# hardware (e.g. a BirdNET-Pi registered on BirdWeather), so entities are
+# created conditionally on what's actually reported. The gas readings come from a
+# Bosch BME688 via the BSEC library: `voc` is bVOCeq in ppm (kept), `aqi` is the
+# BSEC IAQ index 0–500 (kept), but `eco2` is a BSEC CO2-equivalent *estimate*
+# (no real CO2 cell) that's unreliable fleet-wide — ~38% of public PUCs report it
+# below the atmospheric floor, some negative — so it's deliberately not requested.
+# Spectral light channels (f1–f8, nir), accel/mag, and GPS location are omitted.
+_SENSORS_QUERY = """
+query stationSensors($id: ID!) {
+  station(id: $id) {
+    sensors {
+      environment {
+        temperature
+        humidity
+        barometricPressure
+        soundPressureLevel
+        voc
+        aqi
+        timestamp
+      }
+      light { clear timestamp }
+      system {
+        batteryVoltage
+        powerSource
+        wifiRssi
+        sdAvailable
+        sdCapacity
+        timestamp
+      }
+    }
+  }
+}
+"""
+
+
 class BirdWeatherError(Exception):
     """Raised when the API returns transport or GraphQL-level errors."""
 
@@ -365,6 +401,23 @@ class BirdWeatherClient:
             ),
             "new_species_window": len(_names("recent") - _names("hist")),
             "today_top": today_top,
+        }
+
+    async def get_sensors(self, station_id: str) -> dict[str, Any]:
+        """Latest onboard hardware-sensor readings, by sub-suite.
+
+        Returns `{"environment": {...}|None, "light": {...}|None,
+        "system": {...}|None}` — each sub-suite is None on a station without
+        that hardware, which the sensor platform uses to create entities only
+        for what's actually reported. SD figures are BigInt (returned as
+        strings); the sensor layer coerces them.
+        """
+        data = await self._query(_SENSORS_QUERY, {"id": station_id})
+        sensors = (data.get("station") or {}).get("sensors") or {}
+        return {
+            "environment": sensors.get("environment"),
+            "light": sensors.get("light"),
+            "system": sensors.get("system"),
         }
 
     async def get_species_counts(

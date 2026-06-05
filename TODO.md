@@ -96,30 +96,36 @@ BirdWeather-only.
   live feed so gating happens upstream instead of client-side. See the
   subscription section above.
 
-### 3. Environment + device-health sensors (PUC hardware)
+### 3. Environment + device-health sensors (PUC hardware)  ✅ done
 `Station.sensors` exposes a full onboard suite — the one tier that genuinely
 needs a PUC; turns the bird box into a real outdoor environment + air-quality
 station and gives true device health (vs Haikubox's audio-only "is it silent?").
-- `sensors.environment`: `temperature` (°C), `humidity` (%), `barometricPressure`
-  (hPa), `soundPressureLevel` (dB), `voc`, `eco2`, `timestamp`. Map to HA
-  device classes (temperature/humidity/pressure/sound_pressure).
-- `sensors.light`: spectral (AS7341-style) — `clear` (broadband), `f1`–`f8`,
-  `nir`. No lux field; expose `clear` as a luminance proxy (derive illuminance
-  later if wanted).
-- `sensors.system`: `batteryVoltage` (V), `powerSource`, `wifiRssi` (dBm),
-  SD capacity, upload progress — diagnostic entities (entity_category diagnostic).
-- `weather` / `airPollution`: OpenWeather-sourced (temp, humidity, wind, AQI,
-  PM2.5, …) but **only when the owner enables `openWeather`** (else null).
+Shipped (conditional on the station reporting each sub-suite — a BirdNET-Pi gets
+none): a description-driven `BirdWeatherHardwareSensor`, gated on the first
+refresh's `data["sensors"]`.
+The gas block is a **Bosch BME688 via the BSEC library**: `voc` = bVOCeq (ppm),
+`aqi` = BSEC IAQ index (0–500), `eco2` = a CO2-equivalent *estimate* (no real
+CO2 cell).
+- ✅ **environment**: `temperature`, `humidity`, `barometricPressure`,
+  `soundPressureLevel`, `voc`, `aqi` — mapped to HA device classes (temperature /
+  humidity / atmospheric_pressure / sound_pressure / volatile_organic_compounds_parts
+  (ppm) / aqi).
+- ✅ **light**: broadband `clear` channel surfaced as "Light level" (a luminance
+  proxy — not lux, so no illuminance device class). Spectral `f1`–`f8` / `nir`
+  deferred (niche).
+- ✅ **system** (diagnostic): `batteryVoltage` (V), `powerSource`, `wifiRssi`
+  (dBm), SD free % (+ free/total GB attrs).
+- **eco2 skipped** — fleet survey (197 public PUCs): 38% read below the ~420 ppm
+  atmospheric floor (some negative, e.g. −28215 on 20184; only ~47% plausible).
+  It's an unreliable derived estimate, not just a per-unit fluke — clamping can't
+  fix it. Revisit only if BirdWeather's firmware fixes the BSEC eCO2 output.
+- Each entity exposes the reading's own `timestamp` as `last_reading`.
 
-Implementation notes:
-- Extend the coordinator to fetch `sensors { environment{…} light{…} system{…} }`
-  (one query, alongside detections) and stash the latest readings.
-- Create sensor entities **conditionally** — a BirdNET-Pi station registered on
-  BirdWeather has no hardware sensors (all null); only add entities the station
-  actually reports.
-- `eco2` returned a clearly bogus value (−19919) on a test unit — validate /
-  clamp before surfacing.
-- Sensor `timestamp` is independent of detection timestamps (last reading).
+Deferred to a later PR:
+- `weather` / `airPollution`: OpenWeather-sourced (temp, humidity, wind, AQI,
+  PM2.5, …) but **only when the owner enables `openWeather`** (null on station
+  20184, so untestable now) — and largely redundant with HA's own weather.
+- Spectral light channels, accel/mag, GPS location.
 
 ### 4. Detection audio ("play the call")
 Every `Detection` carries `soundscape{url}` (the recording), already threaded as
