@@ -86,6 +86,7 @@ class BirdWeatherCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._last_seen_store  = Store(hass, _STORE_VERSION, f"{DOMAIN}.{station_id}.last_seen")
         self._images_store     = Store(hass, _STORE_VERSION, f"{DOMAIN}.{station_id}.image_urls")
         self._image_attr_store = Store(hass, _STORE_VERSION, f"{DOMAIN}.{station_id}.image_attr")
+        self._links_store      = Store(hass, _STORE_VERSION, f"{DOMAIN}.{station_id}.links")
         self._yearly_store     = Store(hass, _STORE_VERSION, f"{DOMAIN}.{station_id}.yearly")
         self._seven_day_store  = Store(hass, _STORE_VERSION, f"{DOMAIN}.{station_id}.seven_day")
         self._sticky_store     = Store(hass, _STORE_VERSION, f"{DOMAIN}.{station_id}.sticky")
@@ -98,6 +99,8 @@ class BirdWeatherCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._image_urls: dict[str, str] = {}         # sp_code → image URL
         # sp_code → {image_credit, image_credit_url, image_license, image_license_url}
         self._image_attr: dict[str, dict[str, Any]] = {}
+        # sp_code → {ebird_url, wikipedia_url} (upstream URLs BirdWeather supplies)
+        self._links_cache: dict[str, dict[str, Any]] = {}
         self._baseline_items: list[dict[str, Any]] = []
         self._seven_day_data: dict[str, list] = {}
         self._stores_loaded: bool = False
@@ -159,6 +162,23 @@ class BirdWeatherCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             reverse=True,
         )
         _apply_rarity_scores(daily_count, self._baseline_ranks, self._baseline_species_count)
+
+        # Cache the upstream eBird/Wikipedia URLs BirdWeather supplies, keyed by
+        # sp_code and persisted, so store-built lists (watch-list, baseline,
+        # new-species) keep links for species not heard this session. eBird
+        # falls back to a template; Wikipedia has no template, so this is its
+        # only source.
+        links_dirty = False
+        for item in daily_raw["detections"]:
+            code = item.get("spCode") or ""
+            if not code:
+                continue
+            links = {"ebird_url": item.get("ebird_url"), "wikipedia_url": item.get("wikipedia_url")}
+            if any(links.values()) and self._links_cache.get(code) != links:
+                self._links_cache[code] = links
+                links_dirty = True
+        if links_dirty:
+            await self._links_store.async_save(self._links_cache)
 
         # Snapshot last_seen before the update loop (for absence-gap measuring).
         prior_last_seen = dict(self._last_seen)
@@ -317,31 +337,33 @@ class BirdWeatherCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             await self._image_attr_store.async_save(self._image_attr)
         _apply_rarity_scores(today_top, self._baseline_ranks, self._baseline_species_count)
 
+        # Stamp reference-link URLs (eBird/Wikipedia/All About Birds) onto every
+        # card-facing list, so the cards render links without constructing URLs.
         return {
-            "recent_detections": _ranked(detections),
+            "recent_detections": _ranked(self._with_links(detections)),
             "last_detection": self._last_detected,
-            "recent_events": _ranked(recent_events),
+            "recent_events": _ranked(self._with_links(recent_events)),
             "notable_detection": self._last_notable,
             # The trailing-24h detection list still feeds the 7-day rarest
             # rollup, notability, and the extended-silence sensor. Distinct key
             # from the `daily_count` *sensor* (which shows today_total) — the
             # headline count/top-species come from true native totals.
             "detections_24h": daily_count,
-            "daily_top_species": _ranked(today_top),
+            "daily_top_species": _ranked(self._with_links(today_top)),
             "today_total": overview.get("today_total"),
             "today_top": today_top,
             "typical_daily_count": overview.get("typical_daily"),
             "new_species_window": overview.get("new_species_window"),
             "history_earliest": overview.get("history_earliest"),
-            "notable_detections": _ranked(notable),
-            "new_detections": _ranked(self._build_new_species_history()),
+            "notable_detections": _ranked(self._with_links(notable)),
+            "new_detections": _ranked(self._with_links(self._build_new_species_history())),
             "new_detection": self._build_last_new_species(),
             "lifetime_species_count": (
                 overview.get("lifetime_species") or len(self._seen_species)
             ),
-            "yearly_top_species": self._build_baseline_top(),
-            "rarest_species": _ranked(seven_day_rare),
-            "watched_species": _ranked(self._build_watched()),
+            "yearly_top_species": self._with_links(self._build_baseline_top()),
+            "rarest_species": _ranked(self._with_links(seven_day_rare)),
+            "watched_species": _ranked(self._with_links(self._build_watched())),
         }
 
     # ------------------------------------------------------------------
@@ -441,6 +463,7 @@ class BirdWeatherCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         last_seen = await self._last_seen_store.async_load()
         images    = await self._images_store.async_load()
         image_attr = await self._image_attr_store.async_load()
+        links     = await self._links_store.async_load()
         yearly    = await self._yearly_store.async_load()
         seven_day = await self._seven_day_store.async_load()
         sticky    = await self._sticky_store.async_load()
@@ -451,6 +474,7 @@ class BirdWeatherCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._last_seen      = last_seen if isinstance(last_seen, dict) else {}
         self._image_urls     = images    if isinstance(images, dict)    else {}
         self._image_attr     = image_attr if isinstance(image_attr, dict) else {}
+        self._links_cache    = links     if isinstance(links, dict)     else {}
         self._baseline_items   = yearly    if isinstance(yearly, list)    else []
         self._seven_day_data = seven_day if isinstance(seven_day, dict) else {}
 
@@ -542,6 +566,25 @@ class BirdWeatherCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         """Cached photo credit/license for a species code (None values if unknown)."""
         attr = self._image_attr.get(sp_code) or {}
         return {k: attr.get(k) for k in _ATTR_KEYS}
+
+    def _links_for(self, species: str, sp_code: str) -> dict[str, Any]:
+        """Reference-link URLs for a record, surfaced by the integration so the
+        cards just render them (no URL construction in the card). BirdWeather
+        supplies authoritative eBird + Wikipedia URLs (cached); All About Birds
+        has none, so it's templated from the common name. eBird falls back to a
+        template if the upstream URL isn't cached yet."""
+        cached = self._links_cache.get(sp_code) or {}
+        return {
+            "ebird_url": cached.get("ebird_url") or _ebird_url(sp_code),
+            "wikipedia_url": cached.get("wikipedia_url"),
+            "allaboutbirds_url": _allaboutbirds_url(species),
+        }
+
+    def _with_links(self, records: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        """Stamp eBird / Wikipedia / All About Birds URLs onto each record."""
+        for r in records:
+            r.update(self._links_for(r.get("species", ""), r.get("sp_code", "")))
+        return records
 
     def _build_baseline_top(self) -> list[dict[str, Any]]:
         result = []
@@ -672,6 +715,15 @@ def _filter_by_dt(raw: Any, threshold: datetime) -> list[dict[str, Any]]:
 # Photo credit/license keys threaded from the client onto every record so the
 # cards can show attribution (CC BY-SA images require it).
 _ATTR_KEYS = ("image_credit", "image_credit_url", "image_license", "image_license_url")
+
+
+def _ebird_url(sp_code: str | None) -> str | None:
+    return f"https://ebird.org/species/{sp_code}" if sp_code else None
+
+
+def _allaboutbirds_url(species: str | None) -> str | None:
+    # allaboutbirds.org guide URLs key on the common name with spaces → underscores.
+    return f"https://www.allaboutbirds.org/guide/{species.replace(' ', '_')}" if species else None
 
 
 def _normalise_detections(raw: Any) -> list[dict[str, Any]]:

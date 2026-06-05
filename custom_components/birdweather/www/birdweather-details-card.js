@@ -41,6 +41,7 @@ class BirdWeatherBirdListCardEditor extends HTMLElement {
       if (this._sizeField)  this._sizeField.value  = config.row_size ?? "small";
       if (this._ebirdField) this._ebirdField.value = !!config.show_ebird;
       if (this._aabField)   this._aabField.value   = !!config.show_allaboutbirds;
+      if (this._wikiField)  this._wikiField.value  = !!config.show_wikipedia;
     }
   }
 
@@ -56,6 +57,7 @@ class BirdWeatherBirdListCardEditor extends HTMLElement {
       if (this._sizeField)  this._sizeField.hass  = hass;
       if (this._ebirdField) this._ebirdField.hass = hass;
       if (this._aabField)   this._aabField.hass   = hass;
+      if (this._wikiField)  this._wikiField.hass  = hass;
     }
   }
 
@@ -171,7 +173,15 @@ class BirdWeatherBirdListCardEditor extends HTMLElement {
       aabField.addEventListener("value-changed", (e) => this._fire({ show_allaboutbirds: e.detail.value }));
       this._aabField = aabField;
 
-      form.append(ebirdField, aabField);
+      const wikiField = document.createElement("ha-selector");
+      wikiField.label = "Wikipedia links in compact view";
+      wikiField.selector = { boolean: {} };
+      if (this._hass) wikiField.hass = this._hass;
+      wikiField.value = !!this._config?.show_wikipedia;
+      wikiField.addEventListener("value-changed", (e) => this._fire({ show_wikipedia: e.detail.value }));
+      this._wikiField = wikiField;
+
+      form.append(ebirdField, aabField, wikiField);
     }
 
     this.appendChild(form);
@@ -258,28 +268,25 @@ class BirdWeatherBirdListCard extends HTMLElement {
   // with spaces → underscores (e.g. "Downy_Woodpecker", hyphens
   // preserved). `ebird`/`aab` flags gate each; an anchor is skipped if
   // its source field is missing. Returns "" when nothing applies.
-  _linkAnchors(item, ebird, aab) {
+  // Reference links are surfaced by the integration as per-record URL fields
+  // (`ebird_url` / `allaboutbirds_url` / `wikipedia_url`) — the card just renders
+  // the ones present and enabled; it no longer constructs URLs itself. This is
+  // the shared link logic the BirdWeather and Haikubox cards converge on; each
+  // integration decides which URLs to surface.
+  _linkAnchors(item, ebird, aab, wiki) {
+    const btn = (url, label) =>
+      `<a class="link-btn" href="${_esc(url)}" target="_blank" rel="noreferrer noopener" title="${_esc(item.species)} on ${label}">${label}</a>`;
     const parts = [];
-    if (ebird && item.sp_code) {
-      const url = `https://ebird.org/species/${encodeURIComponent(item.sp_code)}`;
-      parts.push(
-        `<a class="link-btn" href="${_esc(url)}" target="_blank" rel="noreferrer noopener" title="${_esc(item.species)} on eBird">eBird</a>`
-      );
-    }
-    if (aab && item.species) {
-      const slug = String(item.species).replace(/ /g, "_");
-      const url = `https://www.allaboutbirds.org/guide/${encodeURIComponent(slug)}`;
-      parts.push(
-        `<a class="link-btn" href="${_esc(url)}" target="_blank" rel="noreferrer noopener" title="${_esc(item.species)} on All About Birds">All About Birds</a>`
-      );
-    }
+    if (ebird && item.ebird_url) parts.push(btn(item.ebird_url, "eBird"));
+    if (aab && item.allaboutbirds_url) parts.push(btn(item.allaboutbirds_url, "All About Birds"));
+    if (wiki && item.wikipedia_url) parts.push(btn(item.wikipedia_url, "Wikipedia"));
     return parts.join("");
   }
 
   // Wrap the requested anchors in a container, or "" if none. `cls`
   // distinguishes the compact-row block from the roomy detail block.
-  _linksBlock(item, ebird, aab, cls) {
-    const anchors = this._linkAnchors(item, ebird, aab);
+  _linksBlock(item, ebird, aab, wiki, cls) {
+    const anchors = this._linkAnchors(item, ebird, aab, wiki);
     return anchors ? `<div class="${cls}">${anchors}</div>` : "";
   }
 
@@ -606,7 +613,7 @@ class BirdWeatherBirdListCard extends HTMLElement {
                       <div class="name">${_esc(item.species)}</div>
                       ${item.scientific_name ? `<div class="sub">${_esc(item.scientific_name)}</div>` : ""}
                     </div>
-                    ${this._linksBlock(item, this._config.show_ebird, this._config.show_allaboutbirds, "row-links")}
+                    ${this._linksBlock(item, this._config.show_ebird, this._config.show_allaboutbirds, this._config.show_wikipedia, "row-links")}
                   </div>
                   <div class="detail">
                     ${item.image_url
@@ -619,7 +626,7 @@ class BirdWeatherBirdListCard extends HTMLElement {
                         ${item.count != null ? `<div class="metric"><strong>${_esc(item.count)}×</strong></div>` : ""}
                         ${t ? `<div class="metric">last heard <strong data-last-seen="${_esc(item.last_seen)}">${_esc(t)}</strong></div>` : ""}
                       </div>
-                      ${this._linksBlock(item, true, true, "detail-links")}
+                      ${this._linksBlock(item, true, true, true, "detail-links")}
                       ${this._attributionBlock(item)}
                     </div>
                   </div>

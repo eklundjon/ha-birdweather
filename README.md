@@ -20,7 +20,7 @@ It reads the **public** BirdWeather GraphQL API anonymously — no account or AP
 - **Bird-detail sensors** — top species (baseline), rarest species (7 d), lifetime species count
 - **Detection history start** — diagnostic timestamp of the station's earliest recorded detection
 - **Extended silence** — diagnostic problem sensor that flags when a station goes a full day without reporting
-- **Custom Lovelace cards** — a bird photo card and a ranked list card
+- **Custom Lovelace cards** — a bird photo card and a ranked list card, with optional per-row links to **eBird**, **Wikipedia**, and **All About Birds**
 - **Automations** — device triggers for new-species, unusual-visitor, and watched-species detections
 - **Watched species** — pick (or type) species to be alerted about; a device trigger fires when one is heard, plus a **Watched species** sensor listing the ones your station has recorded (drop it into the list card for a "Birds of interest" view)
 
