@@ -165,6 +165,19 @@ common-name-only, with a painful backfill.
   species fall outside it and cap at rarity 1.0. Consider a longer window or
   surfacing the period as an option.
 
+## Reference links
+
+- **Template reference links missing from the upstream cache.** `_links_for`
+  surfaces eBird + Wikipedia from the persisted `.links` cache (populated from
+  the detection feed). eBird already falls back to a `sp_code` template when a
+  species isn't cached; **Wikipedia does not**, so watch-list / baseline species
+  not heard this session (e.g. right after a restart) show no Wikipedia link
+  until re-heard. Add a scientific-name fallback
+  (`https://en.wikipedia.org/wiki/<Genus_species>` — verified ~100% reliable via
+  Wikipedia's binomial redirects; haikubox already templates Wikipedia this way),
+  preferring the authoritative upstream URL when cached. Pass `scientific_name`
+  into `_links_for`. Minor.
+
 ## Packaging / parity with haikubox
 
 - `diagnostics.py` (redacted state dump).
