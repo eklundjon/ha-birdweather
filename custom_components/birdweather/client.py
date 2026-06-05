@@ -70,6 +70,8 @@ query stationDetections($id: ID!, $first: Int) {
           commonName
           scientificName
           ebirdCode
+          alpha
+          alpha6
           imageUrl
           thumbnailUrl
           imageCredit
@@ -77,6 +79,7 @@ query stationDetections($id: ID!, $first: Int) {
           imageLicenseUrl
           ebirdUrl
           wikipediaUrl
+          birdweatherUrl
         }
       }
     }
@@ -302,12 +305,15 @@ class BirdWeatherClient:
                     "cn": sp.get("commonName"),
                     "sn": sp.get("scientificName"),
                     "spCode": sp.get("ebirdCode") or "",
+                    "alpha": sp.get("alpha"),
+                    "alpha6": sp.get("alpha6"),
                     "dt": n.get("timestamp"),
                     "image": sp.get("imageUrl"),
                     "audio": (n.get("soundscape") or {}).get("url"),
                     "confidence": n.get("confidence"),
                     "ebird_url": sp.get("ebirdUrl"),
                     "wikipedia_url": sp.get("wikipediaUrl"),
+                    "birdweather_url": sp.get("birdweatherUrl"),
                     **_species_attribution(sp),
                 }
             )

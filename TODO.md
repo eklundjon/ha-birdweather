@@ -57,21 +57,35 @@ companion to these. Bonus already realised: BirdWeather's `detections` feed is
 real + paginated (not a ≤5-per-species sample), so accurate volume / diversity /
 event timelines just work.
 
-### 1. Species-centric tracking + canonical metadata
-Every record already carries `scientificName`, `ebirdCode`, `ebirdUrl`,
-`wikipediaUrl`, `imageUrl` (+ credit/license); the API also filters by
-`speciesIds` / `classifications`. Haikubox `/daily-count` is common-name-only and
-has no species-scoped queries (it forced a bundled 768 KB eBird map for
-codes/sci-names/images).
-- A **"watch species" option** → a filtered `newDetection` subscription / alert
-  that fires only for chosen species (e.g. Painted Bunting).
-- Cards: link out via the canonical `ebirdUrl` / `wikipediaUrl` when present
-  (we currently template eBird/AllAboutBirds URLs from tokens).
-- Drop any reliance on a bundled taxonomy — BirdWeather supplies codes,
-  scientific names, images and links directly.
-- A **"Birds of interest" watchlist card** — a list filtered to chosen species
-  with last-heard (the watchlist as a dashboard element, not just an alert);
-  community-validated.
+### 1. Species-centric tracking + canonical metadata  ✅ done
+Every record carries `scientificName`, `ebirdCode`, `ebirdUrl`, `wikipediaUrl`,
+`imageUrl` (+ credit/license); the `Species` type adds `birdweatherUrl`, `mlUrl`,
+`wikipediaSummary`, `alpha`/`alpha6`, `color`. Haikubox `/daily-count` is
+common-name-only with no species-scoped queries (it forced a bundled 768 KB
+eBird map for codes/sci-names/images) — the structural contrast.
+- ✅ **Watch-species option + alert** (device trigger) — shipped earlier, ported
+  to Haikubox. *Portable.*
+- ✅ **"Birds of interest" watchlist card** (Watched species sensor + list card)
+  — shipped earlier. *Portable.*
+- ✅ **Canonical reference links** — eBird / All About Birds (earlier) plus
+  **Macaulay Library** (templated from `sp_code` → `…/catalog?taxonCode=`,
+  *portable to HB*) and **BirdWeather** (native `birdweatherUrl`, *BW-only*).
+  Wikipedia is no longer a pill — it's reached by tapping the description blurb.
+- ✅ **Species description** — surfaced as a tappable blurb in the list card's
+  expanded detail, **fetched on demand by the card from Wikipedia's REST API**
+  (CORS-enabled) when a row opens, cached per session; tapping it opens the full
+  article (with a persistent "Read more on Wikipedia ›" cue for discoverability).
+  Integration stays lean (static data, no polling/state bloat). *Portable* — both
+  cards have a `wikipedia_url` (native on BW, templated from sci-name on HB).
+- ✅ **Alpha banding codes** (`alpha`/`alpha6`) threaded onto records as
+  attributes; shown as a chip in the detail view. *BW-only → HB API ask.*
+- BirdWeather never needed a bundled taxonomy — it supplies all of the above
+  natively. Haikubox's 768 KB eBird bundle is the workaround; the API ask is to
+  expose per-detection species metadata (sp_code, sci-name, image, links, alpha)
+  in `/detections` & `/daily-count`.
+
+Follow-up (separate PR): port the *portable* pieces to Haikubox — Macaulay
+Library link (template from sp_code) and the on-demand Wikipedia description blurb.
 
 ### 2. Detection confidence / certainty  ✅ done
 `Detection` exposes `confidence`, `score`, `certainty`, `probability`;

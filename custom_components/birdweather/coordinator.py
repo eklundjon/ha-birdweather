@@ -192,7 +192,13 @@ class BirdWeatherCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             code = item.get("spCode") or ""
             if not code:
                 continue
-            links = {"ebird_url": item.get("ebird_url"), "wikipedia_url": item.get("wikipedia_url")}
+            links = {
+                "ebird_url": item.get("ebird_url"),
+                "wikipedia_url": item.get("wikipedia_url"),
+                "birdweather_url": item.get("birdweather_url"),
+                "alpha": item.get("alpha"),
+                "alpha6": item.get("alpha6"),
+            }
             if any(links.values()) and self._links_cache.get(code) != links:
                 self._links_cache[code] = links
                 links_dirty = True
@@ -619,14 +625,24 @@ class BirdWeatherCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     def _links_for(self, species: str, sp_code: str) -> dict[str, Any]:
         """Reference-link URLs for a record, surfaced by the integration so the
         cards just render them (no URL construction in the card). BirdWeather
-        supplies authoritative eBird + Wikipedia URLs (cached); All About Birds
-        has none, so it's templated from the common name. eBird falls back to a
-        template if the upstream URL isn't cached yet."""
+        supplies authoritative eBird / Wikipedia / BirdWeather URLs (cached); All
+        About Birds and Macaulay Library are templated (from the common name and
+        the eBird code respectively). eBird falls back to a template if the
+        upstream URL isn't cached yet. BirdWeather's species page has no template
+        (it's a BirdWeather-only page), so it's only present once cached from the
+        feed."""
         cached = self._links_cache.get(sp_code) or {}
         return {
             "ebird_url": cached.get("ebird_url") or _ebird_url(sp_code),
             "wikipedia_url": cached.get("wikipedia_url"),
             "allaboutbirds_url": _allaboutbirds_url(species),
+            "macaulay_url": _ml_url(sp_code),
+            "birdweather_url": cached.get("birdweather_url"),
+            # Alpha banding codes ride along on the same per-species cache so the
+            # detail-view chip is consistent across every card list (incl. the
+            # store-built and native-aggregate lists, not just the live feed).
+            "alpha": cached.get("alpha"),
+            "alpha6": cached.get("alpha6"),
         }
 
     def _with_links(self, records: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -809,6 +825,17 @@ def _allaboutbirds_url(species: str | None) -> str | None:
     return f"https://www.allaboutbirds.org/guide/{species.replace(' ', '_')}" if species else None
 
 
+def _ml_url(sp_code: str | None) -> str | None:
+    # Macaulay Library catalog keys on the eBird species code (taxonCode) — the
+    # same deterministic template BirdWeather's own mlUrl uses, so it's portable
+    # to any source that has the sp_code (incl. Haikubox via its eBird map).
+    return (
+        f"https://search.macaulaylibrary.org/catalog?taxonCode={sp_code}"
+        if sp_code
+        else None
+    )
+
+
 def _normalise_detections(raw: Any) -> list[dict[str, Any]]:
     """Collapse the flat event list to one record per species, newest first.
 
@@ -835,6 +862,8 @@ def _normalise_detections(raw: Any) -> list[dict[str, Any]]:
                 "species": item.get("cn", "Unknown"),
                 "scientific_name": item.get("sn", ""),
                 "sp_code": sp_code,
+                "alpha": item.get("alpha"),
+                "alpha6": item.get("alpha6"),
                 "image_url": item.get("image"),
                 "last_seen": dt_str,
                 "_last_seen_dt": parsed,
@@ -974,6 +1003,8 @@ def _build_recent_events(
             "species": species,
             "scientific_name": item.get("sn", ""),
             "sp_code": sp_code,
+            "alpha": item.get("alpha"),
+            "alpha6": item.get("alpha6"),
             "image_url": item.get("image") or image_url_for(sp_code),
             "last_seen": dt_str,
             "audio_url": item.get("audio"),
