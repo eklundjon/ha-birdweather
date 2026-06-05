@@ -342,6 +342,18 @@ class BirdWeatherCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             _LOGGER.warning("Could not fetch station overview: %s", err)
             overview = {}
 
+        # Onboard PUC hardware sensors (best-effort). Null sub-suites on a
+        # station without that hardware → the sensor platform creates no
+        # entities for them. A blip here leaves the readings stale rather than
+        # failing the poll. The values themselves are stamped onto data so the
+        # hardware entities (conditionally created from the first refresh) read
+        # them; suite presence is what gates entity creation.
+        try:
+            sensors = await self._client.get_sensors(self.station_id)
+        except (aiohttp.ClientError, BirdWeatherError) as err:
+            _LOGGER.warning("Could not fetch station sensors: %s", err)
+            sensors = {}
+
         # Today's top species (true counts), enriched with the rarity baseline.
         # These records carry photo attribution from the API; fold it into the
         # cache so the baseline/new-species lists can show it for species that
@@ -383,6 +395,7 @@ class BirdWeatherCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             "yearly_top_species": self._with_links(self._build_baseline_top()),
             "rarest_species": _ranked(self._with_links(seven_day_rare)),
             "watched_species": _ranked(self._with_links(self._build_watched())),
+            "sensors": sensors,
         }
 
     # ------------------------------------------------------------------

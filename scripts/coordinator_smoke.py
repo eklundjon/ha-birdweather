@@ -98,6 +98,16 @@ async def main(station_id: str) -> None:
                   f"credit_url={'yes' if r.get('image_credit_url') else None} "
                   f"license_url={'yes' if r.get('image_license_url') else None}")
 
+    sensors = data.get("sensors") or {}
+    print("\nPUC hardware sensors:")
+    if not any(sensors.values()):
+        print("  (none — not a PUC, or no hardware reported)")
+    for suite in ("environment", "light", "system"):
+        reading = sensors.get(suite)
+        if reading:
+            fields = {k: v for k, v in reading.items() if k != "timestamp"}
+            print(f"  {suite:12} {fields}")
+
 
 if __name__ == "__main__":
     station = sys.argv[1] if len(sys.argv) > 1 else "20184"

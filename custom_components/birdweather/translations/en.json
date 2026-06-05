@@ -69,7 +69,18 @@
       "activity_level": { "name": "Activity vs. typical" },
       "new_species_window": { "name": "New species (30 d)" },
       "history_start": { "name": "Detection history start" },
-      "watched_species": { "name": "Watched species" }
+      "watched_species": { "name": "Watched species" },
+      "env_temperature": { "name": "Temperature" },
+      "env_humidity": { "name": "Humidity" },
+      "env_pressure": { "name": "Barometric pressure" },
+      "env_sound_pressure": { "name": "Sound pressure level" },
+      "env_voc": { "name": "VOC" },
+      "env_aqi": { "name": "Air quality index" },
+      "env_light": { "name": "Light level" },
+      "sys_battery_voltage": { "name": "Battery voltage" },
+      "sys_power_source": { "name": "Power source" },
+      "sys_wifi_rssi": { "name": "Wi-Fi signal" },
+      "sys_sd_free": { "name": "SD card free" }
     },
     "binary_sensor": {
       "extended_silence": { "name": "Extended silence (24 h)" }

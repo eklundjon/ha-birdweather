@@ -1,14 +1,27 @@
 from __future__ import annotations
 
 import math
+from collections.abc import Callable
+from dataclasses import dataclass
 from datetime import datetime
+from typing import Any
 
 from homeassistant.components.sensor import (
     SensorDeviceClass,
     SensorEntity,
+    SensorEntityDescription,
     SensorStateClass,
 )
-from homeassistant.const import EntityCategory
+from homeassistant.const import (
+    CONCENTRATION_PARTS_PER_MILLION,
+    PERCENTAGE,
+    SIGNAL_STRENGTH_DECIBELS_MILLIWATT,
+    EntityCategory,
+    UnitOfElectricPotential,
+    UnitOfPressure,
+    UnitOfSoundPressure,
+    UnitOfTemperature,
+)
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
@@ -20,6 +33,161 @@ from .coordinator import BirdWeatherConfigEntry, BirdWeatherCoordinator
 PARALLEL_UPDATES = 0
 
 
+@dataclass(frozen=True, kw_only=True)
+class BirdWeatherSensorDescription(SensorEntityDescription):
+    """Describes a PUC onboard hardware sensor: which sensor sub-suite it reads
+    (`environment` / `light` / `system`), how to pull its value from that
+    suite's latest reading, and optionally extra attributes to expose."""
+
+    suite: str
+    value_fn: Callable[[dict[str, Any]], Any]
+    attrs_fn: Callable[[dict[str, Any]], dict[str, Any]] | None = None
+
+
+def _sd_free_pct(s: dict[str, Any]) -> float | None:
+    """Percent of SD card free, from the BigInt available/capacity (strings)."""
+    try:
+        avail = int(s.get("sdAvailable"))
+        cap = int(s.get("sdCapacity"))
+    except (TypeError, ValueError):
+        return None
+    return round(avail / cap * 100, 1) if cap > 0 else None
+
+
+def _sd_attrs(s: dict[str, Any]) -> dict[str, Any]:
+    """Free / total SD capacity in GB, as context for the free-percent state."""
+    try:
+        avail = int(s.get("sdAvailable"))
+        cap = int(s.get("sdCapacity"))
+    except (TypeError, ValueError):
+        return {}
+    gb = 1_000_000_000
+    return {"free_gb": round(avail / gb, 1), "capacity_gb": round(cap / gb, 1)}
+
+
+# PUC onboard hardware sensors. Created conditionally — only for sub-suites the
+# station actually reports (a BirdNET-Pi has none). See client _SENSORS_QUERY for
+# why eco2 is excluded. Spectral light is reduced to the broadband `clear`
+# channel (a luminance proxy; not lux, so no illuminance device class).
+HARDWARE_SENSORS: tuple[BirdWeatherSensorDescription, ...] = (
+    BirdWeatherSensorDescription(
+        key="temperature",
+        translation_key="env_temperature",
+        suite="environment",
+        device_class=SensorDeviceClass.TEMPERATURE,
+        native_unit_of_measurement=UnitOfTemperature.CELSIUS,
+        state_class=SensorStateClass.MEASUREMENT,
+        suggested_display_precision=1,
+        value_fn=lambda s: s.get("temperature"),
+    ),
+    BirdWeatherSensorDescription(
+        key="humidity",
+        translation_key="env_humidity",
+        suite="environment",
+        device_class=SensorDeviceClass.HUMIDITY,
+        native_unit_of_measurement=PERCENTAGE,
+        state_class=SensorStateClass.MEASUREMENT,
+        suggested_display_precision=0,
+        value_fn=lambda s: s.get("humidity"),
+    ),
+    BirdWeatherSensorDescription(
+        key="barometric_pressure",
+        translation_key="env_pressure",
+        suite="environment",
+        device_class=SensorDeviceClass.ATMOSPHERIC_PRESSURE,
+        native_unit_of_measurement=UnitOfPressure.HPA,
+        state_class=SensorStateClass.MEASUREMENT,
+        suggested_display_precision=1,
+        value_fn=lambda s: s.get("barometricPressure"),
+    ),
+    BirdWeatherSensorDescription(
+        key="sound_pressure",
+        translation_key="env_sound_pressure",
+        suite="environment",
+        device_class=SensorDeviceClass.SOUND_PRESSURE,
+        native_unit_of_measurement=UnitOfSoundPressure.DECIBEL,
+        state_class=SensorStateClass.MEASUREMENT,
+        suggested_display_precision=0,
+        value_fn=lambda s: s.get("soundPressureLevel"),
+    ),
+    BirdWeatherSensorDescription(
+        # BME688 bVOCeq (breath-VOC-equivalent) from Bosch's BSEC library — an
+        # estimate in ppm, anchored to ~0.5 ppm in clean air; maps cleanly to the
+        # parts-ratio VOC device class. (Some stations read a constant 0.125 ppm
+        # floor when the gas sensor isn't calibrated — a valid low reading.)
+        key="voc",
+        translation_key="env_voc",
+        suite="environment",
+        device_class=SensorDeviceClass.VOLATILE_ORGANIC_COMPOUNDS_PARTS,
+        native_unit_of_measurement=CONCENTRATION_PARTS_PER_MILLION,
+        state_class=SensorStateClass.MEASUREMENT,
+        suggested_display_precision=3,
+        value_fn=lambda s: s.get("voc"),
+    ),
+    BirdWeatherSensorDescription(
+        # BSEC IAQ index (0–500), not US-EPA AQI — HA's aqi device class is a
+        # generic air-quality index, so it fits.
+        key="aqi",
+        translation_key="env_aqi",
+        suite="environment",
+        device_class=SensorDeviceClass.AQI,
+        state_class=SensorStateClass.MEASUREMENT,
+        suggested_display_precision=0,
+        value_fn=lambda s: s.get("aqi"),
+    ),
+    BirdWeatherSensorDescription(
+        key="light_level",
+        translation_key="env_light",
+        suite="light",
+        icon="mdi:white-balance-sunny",
+        state_class=SensorStateClass.MEASUREMENT,
+        value_fn=lambda s: s.get("clear"),
+    ),
+    BirdWeatherSensorDescription(
+        key="battery_voltage",
+        translation_key="sys_battery_voltage",
+        suite="system",
+        device_class=SensorDeviceClass.VOLTAGE,
+        native_unit_of_measurement=UnitOfElectricPotential.VOLT,
+        state_class=SensorStateClass.MEASUREMENT,
+        suggested_display_precision=2,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        value_fn=lambda s: s.get("batteryVoltage"),
+    ),
+    BirdWeatherSensorDescription(
+        key="power_source",
+        translation_key="sys_power_source",
+        suite="system",
+        icon="mdi:power-plug",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        value_fn=lambda s: s.get("powerSource"),
+    ),
+    BirdWeatherSensorDescription(
+        key="wifi_rssi",
+        translation_key="sys_wifi_rssi",
+        suite="system",
+        device_class=SensorDeviceClass.SIGNAL_STRENGTH,
+        native_unit_of_measurement=SIGNAL_STRENGTH_DECIBELS_MILLIWATT,
+        state_class=SensorStateClass.MEASUREMENT,
+        suggested_display_precision=0,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        value_fn=lambda s: s.get("wifiRssi"),
+    ),
+    BirdWeatherSensorDescription(
+        key="sd_free",
+        translation_key="sys_sd_free",
+        suite="system",
+        icon="mdi:micro-sd",
+        native_unit_of_measurement=PERCENTAGE,
+        state_class=SensorStateClass.MEASUREMENT,
+        suggested_display_precision=1,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        value_fn=_sd_free_pct,
+        attrs_fn=_sd_attrs,
+    ),
+)
+
+
 async def async_setup_entry(
     hass: HomeAssistant,
     entry: BirdWeatherConfigEntry,
@@ -28,24 +196,34 @@ async def async_setup_entry(
     coordinator = entry.runtime_data
     station_id = entry.data[CONF_STATION_ID]
 
-    async_add_entities(
-        [
-            BirdWeatherRecentDetectionsSensor(coordinator, station_id),
-            BirdWeatherLastDetectionSensor(coordinator, station_id),
-            BirdWeatherDailyCountSensor(coordinator, station_id),
-            BirdWeatherDailyTopSpeciesSensor(coordinator, station_id),
-            BirdWeatherNotableSpeciesSensor(coordinator, station_id),
-            BirdWeatherNewSpeciesSensor(coordinator, station_id),
-            BirdWeatherYearlyTopSpeciesSensor(coordinator, station_id),
-            BirdWeatherRarestSpeciesSensor(coordinator, station_id),
-            BirdWeatherLifetimeSpeciesSensor(coordinator, station_id),
-            BirdWeatherSpeciesDiversitySensor(coordinator, station_id),
-            BirdWeatherActivitySensor(coordinator, station_id),
-            BirdWeatherNewSpeciesWindowSensor(coordinator, station_id),
-            BirdWeatherHistoryDepthSensor(coordinator, station_id),
-            BirdWeatherWatchedSpeciesSensor(coordinator, station_id),
-        ]
+    entities: list[SensorEntity] = [
+        BirdWeatherRecentDetectionsSensor(coordinator, station_id),
+        BirdWeatherLastDetectionSensor(coordinator, station_id),
+        BirdWeatherDailyCountSensor(coordinator, station_id),
+        BirdWeatherDailyTopSpeciesSensor(coordinator, station_id),
+        BirdWeatherNotableSpeciesSensor(coordinator, station_id),
+        BirdWeatherNewSpeciesSensor(coordinator, station_id),
+        BirdWeatherYearlyTopSpeciesSensor(coordinator, station_id),
+        BirdWeatherRarestSpeciesSensor(coordinator, station_id),
+        BirdWeatherLifetimeSpeciesSensor(coordinator, station_id),
+        BirdWeatherSpeciesDiversitySensor(coordinator, station_id),
+        BirdWeatherActivitySensor(coordinator, station_id),
+        BirdWeatherNewSpeciesWindowSensor(coordinator, station_id),
+        BirdWeatherHistoryDepthSensor(coordinator, station_id),
+        BirdWeatherWatchedSpeciesSensor(coordinator, station_id),
+    ]
+
+    # PUC hardware sensors: create only the sub-suites the station actually
+    # reports (a BirdNET-Pi reports none). Gated on the first refresh's data, so
+    # a station that only gains a PUC later picks the entities up on reload.
+    suites = coordinator.data.get("sensors") or {}
+    entities.extend(
+        BirdWeatherHardwareSensor(coordinator, station_id, desc)
+        for desc in HARDWARE_SENSORS
+        if suites.get(desc.suite)
     )
+
+    async_add_entities(entities)
 
 
 class _BirdWeatherSensor(CoordinatorEntity[BirdWeatherCoordinator], SensorEntity):
@@ -444,3 +622,43 @@ class BirdWeatherWatchedSpeciesSensor(_BirdWeatherSensor):
     @property
     def extra_state_attributes(self) -> dict:
         return {"detections": self.coordinator.data.get("watched_species", [])}
+
+
+class BirdWeatherHardwareSensor(_BirdWeatherSensor):
+    """A PUC onboard hardware reading (environment / light / system), driven by
+    a BirdWeatherSensorDescription. Reports None when its sub-suite is absent
+    from a poll (stale hardware) rather than going unavailable, and exposes the
+    reading's own timestamp as `last_reading` (sensor time is independent of
+    detection time)."""
+
+    entity_description: BirdWeatherSensorDescription
+
+    def __init__(
+        self,
+        coordinator: BirdWeatherCoordinator,
+        station_id: str,
+        description: BirdWeatherSensorDescription,
+    ) -> None:
+        super().__init__(coordinator, station_id)
+        self.entity_description = description
+        self._attr_unique_id = f"{station_id}_{description.key}"
+
+    def _suite(self) -> dict | None:
+        return (self.coordinator.data.get("sensors") or {}).get(
+            self.entity_description.suite
+        )
+
+    @property
+    def native_value(self) -> Any:
+        suite = self._suite()
+        return self.entity_description.value_fn(suite) if suite else None
+
+    @property
+    def extra_state_attributes(self) -> dict:
+        suite = self._suite() or {}
+        attrs: dict = {}
+        if ts := suite.get("timestamp"):
+            attrs["last_reading"] = ts
+        if self.entity_description.attrs_fn:
+            attrs.update(self.entity_description.attrs_fn(suite))
+        return attrs
