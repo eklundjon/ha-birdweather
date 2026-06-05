@@ -28,12 +28,16 @@ from homeassistant.helpers.selector import (
 from .client import BirdWeatherClient, BirdWeatherError
 from .const import (
     CONF_ABSENCE_DAYS,
+    CONF_ALERT_MIN_CONFIDENCE,
+    CONF_FEED_MIN_CONFIDENCE,
     CONF_NOTABLE_RARITY_WEIGHT,
     CONF_STATION_ID,
     CONF_STATION_NAME,
     CONF_WATCHED_EXTRA,
     CONF_WATCHED_SPECIES,
     DEFAULT_ABSENCE_DAYS,
+    DEFAULT_ALERT_MIN_CONFIDENCE,
+    DEFAULT_FEED_MIN_CONFIDENCE,
     DEFAULT_NOTABLE_RARITY_WEIGHT,
     DEFAULT_RADIUS_KM,
     DOMAIN,
@@ -143,7 +147,8 @@ class BirdWeatherConfigFlow(ConfigFlow, domain=DOMAIN):
 
 
 class BirdWeatherOptionsFlow(OptionsFlow):
-    """Per-entry options: notability blend + unusual-visitor threshold."""
+    """Per-entry options: notability blend, unusual-visitor threshold,
+    feed/alert confidence gates, and the watch list."""
 
     async def async_step_init(
         self, user_input: dict[str, Any] | None = None
@@ -188,6 +193,30 @@ class BirdWeatherOptionsFlow(OptionsFlow):
                             min=1, max=365, step=1,
                             mode=NumberSelectorMode.BOX,
                             unit_of_measurement="days",
+                        )
+                    ),
+                    vol.Required(
+                        CONF_FEED_MIN_CONFIDENCE,
+                        default=opts.get(
+                            CONF_FEED_MIN_CONFIDENCE, DEFAULT_FEED_MIN_CONFIDENCE
+                        ),
+                    ): NumberSelector(
+                        NumberSelectorConfig(
+                            min=0, max=100, step=5,
+                            mode=NumberSelectorMode.SLIDER,
+                            unit_of_measurement="%",
+                        )
+                    ),
+                    vol.Required(
+                        CONF_ALERT_MIN_CONFIDENCE,
+                        default=opts.get(
+                            CONF_ALERT_MIN_CONFIDENCE, DEFAULT_ALERT_MIN_CONFIDENCE
+                        ),
+                    ): NumberSelector(
+                        NumberSelectorConfig(
+                            min=0, max=100, step=5,
+                            mode=NumberSelectorMode.SLIDER,
+                            unit_of_measurement="%",
                         )
                     ),
                     vol.Optional(

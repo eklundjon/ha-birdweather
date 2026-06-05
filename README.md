@@ -23,6 +23,7 @@ It reads the **public** BirdWeather GraphQL API anonymously — no account or AP
 - **Custom Lovelace cards** — a bird photo card and a ranked list card, with optional per-row links to **eBird**, **Wikipedia**, and **All About Birds**
 - **Automations** — device triggers for new-species, unusual-visitor, and watched-species detections
 - **Watched species** — pick (or type) species to be alerted about; a device trigger fires when one is heard, plus a **Watched species** sensor listing the ones your station has recorded (drop it into the list card for a "Birds of interest" view)
+- **Confidence controls** — optional thresholds to hide low-confidence "maybe" detections from the feed and to gate alerts on confident hits only (independent, so you can see maybes but only be pinged on sure things); the cards show a low/medium/high confidence band
 
 ## Quick start
 
@@ -76,6 +77,8 @@ After setup, open the integration's **Configure** dialog to tune:
 
 - **Notability rarity weight** — how much the "notable species" pick leans on rarity vs. recency (100% = pure rarity; default 70%).
 - **Unusual-visitor days** — how long a known species must go unheard before its reappearance counts as an unusual visitor (default 30 days).
+- **Hide detections below confidence** — suppress low-confidence "maybe" detections from the recent / last / notable / new sensors and the cards (0% = show everything, the default). The 24-hour **total** and **diversity** counts come straight from BirdWeather's own aggregates and are *not* affected by this filter — they always reflect the station's own confidence floor.
+- **Only alert above confidence** — don't fire the new-species, unusual-visitor, or watched-species triggers below this confidence (0% = alert on any, the default). Independent of the hide filter, so you can keep seeing maybes while only being pinged on confident hits.
 - **Watched species** — choose species (from a pick-list of ones your station has detected, and/or a free-text list for ones it hasn't) to be alerted about. When a watched species is heard, the **"Watched species detected"** device trigger fires — wire it to a notification in the automation editor.
 
 ## Troubleshooting

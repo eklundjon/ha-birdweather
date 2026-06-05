@@ -16,12 +16,18 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, Upda
 from .client import BirdWeatherClient, BirdWeatherError
 from .const import (
     CONF_ABSENCE_DAYS,
+    CONF_ALERT_MIN_CONFIDENCE,
+    CONF_FEED_MIN_CONFIDENCE,
     CONF_NOTABLE_RARITY_WEIGHT,
     ACTIVITY_BASELINE_DAYS,
     CONF_STATION_ID,
     CONF_STATION_NAME,
+    CONFIDENCE_BAND_HIGH,
+    CONFIDENCE_BAND_LOW,
     DAILY_WINDOW_HOURS,
     DEFAULT_ABSENCE_DAYS,
+    DEFAULT_ALERT_MIN_CONFIDENCE,
+    DEFAULT_FEED_MIN_CONFIDENCE,
     DEFAULT_NOTABLE_RARITY_WEIGHT,
     DEFAULT_SCAN_INTERVAL,
     DETECTION_FETCH_LIMIT,
@@ -145,6 +151,19 @@ class BirdWeatherCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             )
         except (aiohttp.ClientError, BirdWeatherError) as err:
             raise UpdateFailed(f"Error communicating with BirdWeather API: {err}") from err
+
+        # Feed min-confidence: drop low-confidence "maybe" events before any
+        # windowing, so every feed-derived sensor + alert sees only the kept
+        # set. The native count/diversity/activity aggregates come from the
+        # server (get_overview) and reflect the station's own minConfidence —
+        # this filter does not, and cannot, reduce those.
+        feed_min = self.config_entry.options.get(
+            CONF_FEED_MIN_CONFIDENCE, DEFAULT_FEED_MIN_CONFIDENCE
+        )
+        if feed_min:
+            raw_all["detections"] = _filter_by_confidence(
+                raw_all.get("detections", []), feed_min
+            )
 
         now = datetime.now(timezone.utc)
         # The fetch returns the most-recent N events regardless of age; carve
@@ -379,8 +398,24 @@ class BirdWeatherCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         by_species = {d["species"]: d for d in detections if d.get("species")}
         current_recent = set(by_species)
 
+        # Alert min-confidence gate (independent of the feed filter): suppress a
+        # trigger when its detection is below the bar. Lets a user keep maybes in
+        # the feed (feed filter low/off) while only being pinged on confident
+        # hits. No-op at 0. Records with no numeric confidence are not alertable
+        # once the gate is on (can't confirm they clear the bar).
+        alert_min = self.config_entry.options.get(
+            CONF_ALERT_MIN_CONFIDENCE, DEFAULT_ALERT_MIN_CONFIDENCE
+        ) / 100.0
+
+        def _alertable(record: dict[str, Any]) -> bool:
+            if alert_min <= 0:
+                return True
+            c = record.get("confidence")
+            return isinstance(c, (int, float)) and c >= alert_min
+
         for sp in newly_seen:
-            self._fire_event(TRIGGER_NEW_SPECIES, by_species[sp])
+            if _alertable(by_species[sp]):
+                self._fire_event(TRIGGER_NEW_SPECIES, by_species[sp])
 
         if self._prev_recent_species is not None:
             threshold_days = self.config_entry.options.get(
@@ -394,7 +429,7 @@ class BirdWeatherCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 if prior is None:
                     continue
                 days_absent = (now - prior).days
-                if days_absent >= threshold_days:
+                if days_absent >= threshold_days and _alertable(by_species[sp]):
                     self._fire_event(
                         TRIGGER_UNUSUAL_VISITOR, by_species[sp], days_absent=days_absent
                     )
@@ -407,7 +442,7 @@ class BirdWeatherCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         watched = self._watched_species()
         if watched and self._prev_recent_species is not None:
             for sp in current_recent - self._prev_recent_species:
-                if sp.casefold() in watched:
+                if sp.casefold() in watched and _alertable(by_species[sp]):
                     self._fire_event(TRIGGER_WATCHED_SPECIES, by_species[sp])
 
         self._prev_recent_species = current_recent
@@ -445,6 +480,7 @@ class BirdWeatherCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 "image_url": record.get("image_url"),
                 "audio_url": record.get("audio_url"),
                 "confidence": record.get("confidence"),
+                "confidence_band": record.get("confidence_band"),
                 "last_seen": record.get("last_seen"),
                 "rarity_score": record.get("rarity_score"),
                 "yearly_rank": record.get("yearly_rank"),
@@ -696,6 +732,40 @@ def _parse_dt(value: Any) -> datetime | None:
     return dt
 
 
+def _confidence_band(confidence: Any) -> str | None:
+    """Qualitative low/medium/high band for a 0–1 confidence (None if unknown).
+
+    Derived from the number, not BirdWeather's near-constant `certainty` string;
+    cutoffs live in const (see the note there). Surfaced on records so the cards
+    render a label without knowing the thresholds.
+    """
+    if not isinstance(confidence, (int, float)):
+        return None
+    if confidence < CONFIDENCE_BAND_LOW:
+        return "low"
+    if confidence < CONFIDENCE_BAND_HIGH:
+        return "medium"
+    return "high"
+
+
+def _filter_by_confidence(
+    items: list[dict[str, Any]], min_pct: int
+) -> list[dict[str, Any]]:
+    """Drop detection events below `min_pct` (0–100) confidence. `min_pct` <= 0
+    is a no-op. Events with no numeric confidence are dropped when the filter is
+    active (we can't confirm they clear the bar)."""
+    if not min_pct or min_pct <= 0:
+        return items
+    threshold = min_pct / 100.0
+    return [
+        it
+        for it in items
+        if isinstance(it, dict)
+        and isinstance(it.get("confidence"), (int, float))
+        and it["confidence"] >= threshold
+    ]
+
+
 def _filter_by_dt(raw: Any, threshold: datetime) -> list[dict[str, Any]]:
     if not isinstance(raw, dict):
         return []
@@ -757,6 +827,7 @@ def _normalise_detections(raw: Any) -> list[dict[str, Any]]:
                 "_last_seen_dt": parsed,
                 "audio_url": item.get("audio"),
                 "confidence": item.get("confidence"),
+                "confidence_band": _confidence_band(item.get("confidence")),
                 "count": 0,
                 "rarity_score": 0.0,
                 "yearly_rank": 0,
@@ -770,6 +841,7 @@ def _normalise_detections(raw: Any) -> list[dict[str, Any]]:
             rec["_last_seen_dt"] = parsed
             rec["audio_url"] = item.get("audio")
             rec["confidence"] = item.get("confidence")
+            rec["confidence_band"] = _confidence_band(item.get("confidence"))
             if item.get("image"):
                 rec["image_url"] = item.get("image")
 
@@ -893,6 +965,7 @@ def _build_recent_events(
             "last_seen": dt_str,
             "audio_url": item.get("audio"),
             "confidence": item.get("confidence"),
+            "confidence_band": _confidence_band(item.get("confidence")),
             "rarity_score": round(rank / denom, 4),
             "yearly_rank": rank,
             **{k: item.get(k) for k in _ATTR_KEYS},
