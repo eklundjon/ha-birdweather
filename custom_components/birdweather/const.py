@@ -67,3 +67,28 @@ DEFAULT_ABSENCE_DAYS = 30
 # name per line) for species not yet seen here (the aspirational case).
 CONF_WATCHED_SPECIES = "watched_species"       # list[str] from the pick-list
 CONF_WATCHED_EXTRA = "watched_species_extra"   # newline-separated free text
+
+# --- Confidence (Tier 2) -----------------------------------------------------
+# BirdWeather detections carry a 0–1 `confidence`. Two independent, opt-in
+# thresholds (percent; 0 = off) gate the pipeline:
+#   * FEED  — suppress detections below it from the feed-derived sensors
+#     (recent / last / 24h list / notable / new / watched / extended-silence).
+#     The native count / diversity / activity aggregates are server-side and
+#     reflect the station's OWN minConfidence; the feed filter doesn't touch them.
+#   * ALERT — don't fire the new / unusual / watched device triggers below it.
+# Independent so a user can keep seeing low-confidence "maybes" while only being
+# pinged on confident hits. Both default to 0 → behaviour unchanged until opt-in.
+CONF_FEED_MIN_CONFIDENCE = "feed_min_confidence"
+CONF_ALERT_MIN_CONFIDENCE = "alert_min_confidence"
+DEFAULT_FEED_MIN_CONFIDENCE = 0
+DEFAULT_ALERT_MIN_CONFIDENCE = 0
+
+# Card confidence badge: a qualitative low / medium / high band DERIVED from the
+# numeric confidence. BirdWeather's own `certainty` string is useless for this —
+# ~99% of detections read "almost_certain" across the entire 0.36–0.98 range —
+# so we band the number ourselves. Cutoffs are tuned to that real distribution
+# (mean ~0.65): < LOW → low, < HIGH → medium, ≥ HIGH → high. Deliberately NOT
+# the Haikubox app's (arbitrary, possibly-changing) bands, which don't transfer
+# to BirdWeather's data; computed in the coordinator so the cards stay dumb.
+CONFIDENCE_BAND_LOW = 0.55
+CONFIDENCE_BAND_HIGH = 0.80

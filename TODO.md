@@ -73,15 +73,28 @@ codes/sci-names/images).
   with last-heard (the watchlist as a dashboard element, not just an alert);
   community-validated.
 
-### 2. Detection confidence / certainty
+### 2. Detection confidence / certainty  ✅ done
 `Detection` exposes `confidence`, `score`, `certainty`, `probability`;
 `topSpecies` has `averageProbability`; the station reports its own
-`minConfidence`; the subscription filters on `confidenceGte`. Haikubox exposes
-nothing usable here. (The coordinator already threads `confidence` onto records.)
-- A **min-confidence filter** option (suppress "maybe" detections).
-- Confidence / certainty **display + badge** on cards.
-- **Confidence-gated alerts** — pairs with the push subscription's
-  `confidenceGte` to cut false-positive pings on rare birds.
+`minConfidence`. Haikubox exposes **nothing** usable here — `/detections` items
+are `{sn, wav, dt, cn, spCode, offset}`, no confidence; its app's low/med/high
+bands are BirdNET-internal and not in the public API. So this tier is
+BirdWeather-only.
+- ✅ **Feed min-confidence** option — drops low-confidence "maybe" events from
+  the feed-derived sensors (recent/last/24h/notable/new/watched/silence) before
+  windowing. Native count/diversity/activity aggregates are server-side and
+  unaffected (they reflect the station's own `minConfidence`).
+- ✅ **Alert min-confidence** option — independent gate on the new/unusual/
+  watched device triggers, so you can see maybes but only be pinged on confident
+  hits. (`confidence_band` is also threaded into the trigger payload.)
+- ✅ **Confidence badge** on cards — a low/medium/high band *derived from the
+  numeric confidence* (BirdWeather's own `certainty` is ~99% "almost_certain"
+  across 0.36–0.98, useless as a label). Cutoffs in `const` (low <55 / med
+  55–80 / high ≥80), tuned to the real distribution; both cards have a
+  `show_confidence` toggle (default on).
+- Future (needs the push subscription): server-side `confidenceGte` on the
+  live feed so gating happens upstream instead of client-side. See the
+  subscription section above.
 
 ### 3. Environment + device-health sensors (PUC hardware)
 `Station.sensors` exposes a full onboard suite — the one tier that genuinely
@@ -177,6 +190,22 @@ common-name-only, with a painful backfill.
   Wikipedia's binomial redirects; haikubox already templates Wikipedia this way),
   preferring the authoritative upstream URL when cached. Pass `scientific_name`
   into `_links_for`. Minor.
+
+## Cards / UI
+
+- **Revisit bird-card responsiveness holistically.** The portrait layout
+  reserves a *fixed* text strip below the photo (`clamp()` heights in the
+  `.img-wrap` formulas) sized for a worst-case line count. Adding the confidence
+  line (Tier 2) overflowed the old reserve and clipped the species name; fixed
+  for now by enlarging the reserves (base `clamp(104px, 34cqh, 200px)`,
+  short-portrait `clamp(86px, 30cqh, 160px)`) and hiding the band on very short
+  wide cards. This works but is brittle — every new text line re-opens the math.
+  Consider switching to a content-sized text block with the photo filling the
+  remainder (`.body { flex: 0 0 auto }`, image `flex: 1 1 auto`), so text can
+  never overflow into the photo regardless of line count. The blocker is the
+  portrait-priority width formulas that derive the photo width from its
+  (currently explicit) height; a flex-shrunk height breaks them, so it needs a
+  rethink of those queries. Bigger change — deferred out of the Tier 2 PR.
 
 ## Packaging / parity with haikubox
 

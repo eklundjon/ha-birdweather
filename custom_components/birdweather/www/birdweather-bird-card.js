@@ -10,6 +10,13 @@ function _esc(s) {
     .replace(/"/g, "&quot;");
 }
 
+// Confidence band → display label. The integration derives the low/medium/high
+// band from each detection's numeric confidence and surfaces it as
+// `confidence_band`; the card just labels it (the raw number stays hidden).
+function _bandLabel(band) {
+  return { low: "Low", medium: "Medium", high: "High" }[band] ?? "";
+}
+
 // Editor entity-picker filter: only show BirdWeather sensors that expose
 // a `detections` list (so the bird/list cards have something to render).
 // Excludes daily_count, which is a numeric-only total. Returns true
@@ -46,6 +53,7 @@ class BirdWeatherBirdCardEditor extends HTMLElement {
         this._syncPathField();
       }
       if (this._attrField) this._attrField.value = config.show_attribution !== false;
+      if (this._confField) this._confField.value = config.show_confidence !== false;
     }
   }
 
@@ -206,6 +214,20 @@ class BirdWeatherBirdCardEditor extends HTMLElement {
       );
       this._attrField = attr;
       this.appendChild(attr);
+
+      // Confidence band toggle (default on). Shows a low/medium/high label
+      // under the timestamp for detections that carry a confidence.
+      const conf = document.createElement("ha-selector");
+      conf.label = "Show confidence";
+      conf.selector = { boolean: {} };
+      if (this._hass) conf.hass = this._hass;
+      conf.value = this._config?.show_confidence !== false;
+      conf.style.cssText = "display:block;padding:0 16px 16px";
+      conf.addEventListener("value-changed", (e) =>
+        this._fire({ show_confidence: e.detail.value })
+      );
+      this._confField = conf;
+      this.appendChild(conf);
     }
   }
 }
@@ -449,6 +471,7 @@ class BirdWeatherBirdCard extends HTMLElement {
           image_url: top.image_url,
           scientific_name: top.scientific_name,
           last_seen: top.last_seen,
+          confidence_band: top.confidence_band,
           image_credit: top.image_credit,
           image_credit_url: top.image_credit_url,
           image_license: top.image_license,
@@ -497,10 +520,13 @@ class BirdWeatherBirdCard extends HTMLElement {
           /*
            * Portrait: photo height = card width (square), but not more than
            * card height minus a text area. The reserve grows with card
-           * height (clamped 72–160px) so the responsive species text below
-           * has room to grow on large cards instead of being clipped.
+           * height (clamped 104–200px) so the responsive text block below —
+           * up to four lines (species, scientific name, time, confidence) —
+           * has room to grow on large cards instead of being clipped under
+           * the photo. Sized for the worst case so the species name never
+           * collides with the photo / its credit overlay.
            */
-          height: min(100cqw, calc(100cqh - clamp(72px, 26cqh, 160px)));
+          height: min(100cqw, calc(100cqh - clamp(104px, 34cqh, 200px)));
           width: 100%;
           align-self: center;
           overflow: hidden;
@@ -585,14 +611,16 @@ class BirdWeatherBirdCard extends HTMLElement {
 
         /*
          * Portrait priority 3: card is too short for full-width 3:2 photo + text.
-         * Shrink photo to 3:2, centre horizontally.
-         * 54px ≈ 2-line body (20px padding + 18px species + 13px time + 3px gap).
+         * Shrink photo to 3:2, centre horizontally. Here the scientific name is
+         * already hidden (priority 2), so the body is up to three lines (species,
+         * time, confidence); reserve clamps 86–160px to fit them without the
+         * species name riding up under the photo.
          */
         @container (min-aspect-ratio: 1.2) and (max-aspect-ratio: 3/2) {
           .img-wrap {
             flex: 0 0 auto;
-            height: calc(100cqh - clamp(54px, 20cqh, 120px));
-            width: min(100cqw, calc((100cqh - clamp(54px, 20cqh, 120px)) * 1.5));
+            height: calc(100cqh - clamp(86px, 30cqh, 160px));
+            width: min(100cqw, calc((100cqh - clamp(86px, 30cqh, 160px)) * 1.5));
           }
         }
 
@@ -621,10 +649,31 @@ class BirdWeatherBirdCard extends HTMLElement {
           font-size: clamp(0.75rem, 2cqw + 1.1cqh, 1.15rem);
           color: var(--secondary-text-color);
         }
+        /* Confidence band — a colored dot + low/medium/high label. The dot
+         * carries the band colour; the text stays in the secondary colour so
+         * it reads as a quiet caption, not an alert. */
+        .confidence {
+          display: inline-flex;
+          align-items: center;
+          gap: 5px;
+          font-size: clamp(0.72rem, 1.8cqw + 1cqh, 1.05rem);
+          color: var(--secondary-text-color);
+        }
+        .confidence .dot {
+          width: 0.6em;
+          height: 0.6em;
+          border-radius: 50%;
+          flex-shrink: 0;
+          background: var(--secondary-text-color);
+        }
+        .confidence.conf-high .dot { background: var(--success-color, #43a047); }
+        .confidence.conf-medium .dot { background: var(--warning-color, #fb8c00); }
+        .confidence.conf-low .dot { background: var(--error-color, #e53935); }
 
-        /* Wide layout: drop scientific / shrink fonts when card is very short */
+        /* Wide layout: drop scientific + confidence / shrink fonts when short */
         @container (aspect-ratio > 3/2) and (max-height: 71px) {
-          .scientific { display: none; }
+          .scientific,
+          .confidence { display: none; }
         }
         @container (aspect-ratio > 3/2) and (max-height: 51px) {
           .species { font-size: 0.95em; }
@@ -678,6 +727,9 @@ class BirdWeatherBirdCard extends HTMLElement {
                 <div class="species">${_esc(bird.species)}</div>
                 <div class="scientific">${_esc(bird.scientific_name ?? "")}</div>
                 <div class="time">${_esc(this._relativeTime(bird.last_seen))}</div>
+                ${this._config.show_confidence !== false && bird.confidence_band
+                  ? `<div class="confidence conf-${_esc(bird.confidence_band)}" title="Detection confidence"><span class="dot"></span>${_esc(_bandLabel(bird.confidence_band))} confidence</div>`
+                  : ""}
               </div>
             </div>
           `}

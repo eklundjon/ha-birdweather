@@ -10,6 +10,13 @@ function _esc(s) {
     .replace(/"/g, "&quot;");
 }
 
+// Confidence band → display label. The integration derives the low/medium/high
+// band from each detection's numeric confidence and surfaces it as
+// `confidence_band`; the card just labels it (the raw number stays hidden).
+function _bandLabel(band) {
+  return { low: "Low", medium: "Medium", high: "High" }[band] ?? "";
+}
+
 // Editor entity-picker filter: only show BirdWeather sensors that expose
 // a `detections` list (so the bird/list cards have something to render).
 // Excludes daily_count, which is a numeric-only total. Returns true
@@ -42,6 +49,7 @@ class BirdWeatherBirdListCardEditor extends HTMLElement {
       if (this._ebirdField) this._ebirdField.value = !!config.show_ebird;
       if (this._aabField)   this._aabField.value   = !!config.show_allaboutbirds;
       if (this._wikiField)  this._wikiField.value  = !!config.show_wikipedia;
+      if (this._confField)  this._confField.value  = config.show_confidence !== false;
     }
   }
 
@@ -58,6 +66,7 @@ class BirdWeatherBirdListCardEditor extends HTMLElement {
       if (this._ebirdField) this._ebirdField.hass = hass;
       if (this._aabField)   this._aabField.hass   = hass;
       if (this._wikiField)  this._wikiField.hass  = hass;
+      if (this._confField)  this._confField.hass  = hass;
     }
   }
 
@@ -181,7 +190,17 @@ class BirdWeatherBirdListCardEditor extends HTMLElement {
       wikiField.addEventListener("value-changed", (e) => this._fire({ show_wikipedia: e.detail.value }));
       this._wikiField = wikiField;
 
-      form.append(ebirdField, aabField, wikiField);
+      // Confidence band in the expanded detail view (default on). Shows a
+      // low/medium/high chip alongside the count / last-heard metrics.
+      const confField = document.createElement("ha-selector");
+      confField.label = "Show confidence in detail view";
+      confField.selector = { boolean: {} };
+      if (this._hass) confField.hass = this._hass;
+      confField.value = this._config?.show_confidence !== false;
+      confField.addEventListener("value-changed", (e) => this._fire({ show_confidence: e.detail.value }));
+      this._confField = confField;
+
+      form.append(ebirdField, aabField, wikiField, confField);
     }
 
     this.appendChild(form);
@@ -585,6 +604,19 @@ class BirdWeatherBirdListCard extends HTMLElement {
           color: var(--primary-text-color);
           font-weight: 600;
         }
+        /* Confidence band chip — a colored dot keys the low/medium/high level;
+           the chip itself stays neutral so it sits quietly with the others. */
+        .metric .conf-dot {
+          display: inline-block;
+          width: 0.6em;
+          height: 0.6em;
+          border-radius: 50%;
+          margin-right: 5px;
+          background: var(--secondary-text-color);
+        }
+        .metric.conf-high .conf-dot { background: var(--success-color, #43a047); }
+        .metric.conf-medium .conf-dot { background: var(--warning-color, #fb8c00); }
+        .metric.conf-low .conf-dot { background: var(--error-color, #e53935); }
 
         .empty {
           padding: 10px 16px;
@@ -625,6 +657,9 @@ class BirdWeatherBirdListCard extends HTMLElement {
                       <div class="metrics">
                         ${item.count != null ? `<div class="metric"><strong>${_esc(item.count)}×</strong></div>` : ""}
                         ${t ? `<div class="metric">last heard <strong data-last-seen="${_esc(item.last_seen)}">${_esc(t)}</strong></div>` : ""}
+                        ${this._config.show_confidence !== false && item.confidence_band
+                          ? `<div class="metric conf-${_esc(item.confidence_band)}" title="Detection confidence"><span class="conf-dot"></span><strong>${_esc(_bandLabel(item.confidence_band))}</strong> confidence</div>`
+                          : ""}
                       </div>
                       ${this._linksBlock(item, true, true, true, "detail-links")}
                       ${this._attributionBlock(item)}

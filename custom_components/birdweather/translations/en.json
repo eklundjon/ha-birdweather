@@ -27,16 +27,20 @@
     "step": {
       "init": {
         "title": "BirdWeather options",
-        "description": "Tune the “notable species” ranking, the unusual-visitor alert, and the species you want to be alerted about.",
+        "description": "Tune the “notable species” ranking, the unusual-visitor alert, the confidence filters, and the species you want to be alerted about.",
         "data": {
           "notable_rarity_weight": "Notability: % weight toward rarity",
           "absence_days": "Unusual visitor: days unheard",
+          "feed_min_confidence": "Hide detections below confidence",
+          "alert_min_confidence": "Only alert above confidence",
           "watched_species": "Watch species (detected here)",
           "watched_species_extra": "Also watch (one name per line)"
         },
         "data_description": {
           "notable_rarity_weight": "100% = pure rarity; 0% = pure recency. Default 70% leans toward rarity with a small recency nudge.",
           "absence_days": "How long a known species must have gone unheard before it counts as an unusual visitor. Default 30 days.",
+          "feed_min_confidence": "Suppress low-confidence “maybe” detections from the recent/last/notable/new sensors and the cards. 0% = show everything. The 24-hour total and diversity counts come straight from BirdWeather and aren’t affected.",
+          "alert_min_confidence": "Don’t fire the new-species, unusual-visitor, or watched-species triggers below this confidence. 0% = alert on any. Independent of the hide filter, so you can see maybes but only be pinged on confident hits.",
           "watched_species": "Pick from species your station has already detected. A “watched species detected” device trigger fires when one is heard.",
           "watched_species_extra": "Add species you haven’t recorded yet (e.g. a hoped-for visitor) — one common name per line, exactly as BirdWeather spells it."
         }
