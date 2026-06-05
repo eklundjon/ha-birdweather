@@ -270,6 +270,8 @@ class BirdWeatherClient:
                     "image": sp.get("imageUrl"),
                     "audio": (n.get("soundscape") or {}).get("url"),
                     "confidence": n.get("confidence"),
+                    "ebird_url": sp.get("ebirdUrl"),
+                    "wikipedia_url": sp.get("wikipediaUrl"),
                     **_species_attribution(sp),
                 }
             )

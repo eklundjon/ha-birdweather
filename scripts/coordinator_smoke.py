@@ -48,12 +48,13 @@ async def main(station_id: str) -> None:
         coord._last_seen = {}
         coord._image_urls = {}
         coord._image_attr = {}
+        coord._links_cache = {}
         coord._seven_day_data = {}
         coord._prev_recent_species = None
         coord._stores_loaded = True  # skip _load_stores
         for attr in (
             "_store", "_sp_codes_store", "_sci_names_store", "_last_seen_store",
-            "_images_store", "_image_attr_store", "_yearly_store",
+            "_images_store", "_image_attr_store", "_links_store", "_yearly_store",
             "_seven_day_store", "_sticky_store",
         ):
             setattr(coord, attr, _FakeStore())
