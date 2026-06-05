@@ -84,7 +84,9 @@ async def main(station_id: str) -> None:
 
     ld = data.get("last_detection") or {}
     print("\nlast_detection record:")
-    for f in ("species", "scientific_name", "sp_code", "image_url", "audio_url",
+    for f in ("species", "scientific_name", "sp_code", "alpha", "alpha6",
+              "ebird_url", "wikipedia_url", "allaboutbirds_url", "macaulay_url",
+              "birdweather_url", "image_url", "audio_url",
               "confidence", "confidence_band", "last_seen", "rarity_score",
               "image_credit", "image_credit_url", "image_license", "image_license_url"):
         print(f"  {f:18} {ld.get(f)!r}")
