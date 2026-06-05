@@ -341,6 +341,7 @@ class BirdWeatherCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             ),
             "yearly_top_species": self._build_baseline_top(),
             "rarest_species": _ranked(seven_day_rare),
+            "watched_species": _ranked(self._build_watched()),
         }
 
     # ------------------------------------------------------------------
@@ -584,6 +585,35 @@ class BirdWeatherCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     def _build_last_new_species(self) -> dict[str, Any] | None:
         history = self._build_new_species_history()
         return history[0] if history else None
+
+    def _build_watched(self) -> list[dict[str, Any]]:
+        """Watch-list species this station has detected, most-recently-heard
+        first — powers the "Birds of interest" list card. Watched species the
+        station has never recorded aren't listed (nothing to render); they're
+        still covered by the watched_species device trigger when they arrive."""
+        watched = self._watched_species()
+        if not watched:
+            return []
+        denom = max(self._baseline_species_count, 1)
+        result: list[dict[str, Any]] = []
+        for species in self._seen_species:
+            if species.casefold() not in watched:
+                continue
+            sp_code = self._sp_codes.get(species, "")
+            rank = self._baseline_ranks.get(species, self._baseline_species_count)
+            result.append({
+                "species": species,
+                "scientific_name": self._sci_names.get(species, ""),
+                "sp_code": sp_code,
+                "image_url": self._image_urls.get(sp_code),
+                "last_seen": self._last_seen.get(species),
+                "first_seen": self._seen_species.get(species),
+                "rarity_score": round(rank / denom, 4),
+                "yearly_rank": rank,
+                **self._image_attribution(sp_code),
+            })
+        result.sort(key=lambda x: x.get("last_seen") or "", reverse=True)
+        return result
 
     # ------------------------------------------------------------------
     # Public properties (diagnostics)
