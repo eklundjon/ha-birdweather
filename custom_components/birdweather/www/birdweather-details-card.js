@@ -80,6 +80,7 @@ class BirdWeatherBirdListCardEditor extends HTMLElement {
       if (this._confField)  this._confField.value  = config.show_confidence !== false;
       if (this._descField)  this._descField.value  = config.show_description !== false;
       if (this._actField)   this._actField.value   = config.show_activity !== false;
+      if (this._audioField) this._audioField.value = config.show_audio !== false;
     }
   }
 
@@ -100,6 +101,7 @@ class BirdWeatherBirdListCardEditor extends HTMLElement {
       if (this._confField)  this._confField.hass  = hass;
       if (this._descField)  this._descField.hass  = hass;
       if (this._actField)   this._actField.hass   = hass;
+      if (this._audioField) this._audioField.hass = hass;
     }
   }
 
@@ -260,7 +262,17 @@ class BirdWeatherBirdListCardEditor extends HTMLElement {
       actField.addEventListener("value-changed", (e) => this._fire({ show_activity: e.detail.value }));
       this._actField = actField;
 
-      form.append(ebirdField, aabField, mlField, bwField, confField, descField, actField);
+      // "Play the call" button in the detail view (default on). Plays the
+      // detection's soundscape recording in the browser.
+      const audioField = document.createElement("ha-selector");
+      audioField.label = "Show play-call button in detail view";
+      audioField.selector = { boolean: {} };
+      if (this._hass) audioField.hass = this._hass;
+      audioField.value = this._config?.show_audio !== false;
+      audioField.addEventListener("value-changed", (e) => this._fire({ show_audio: e.detail.value }));
+      this._audioField = audioField;
+
+      form.append(ebirdField, aabField, mlField, bwField, confField, descField, actField, audioField);
     }
 
     this.appendChild(form);
@@ -328,6 +340,43 @@ class BirdWeatherBirdListCard extends HTMLElement {
       clearInterval(this._timeTicker);
       this._timeTicker = null;
     }
+    if (this._audio) {
+      this._audio.pause();
+      this._audio = null;
+    }
+  }
+
+  // Play/pause a detection's soundscape in the browser (one Audio instance for
+  // the card). FLAC plays in modern browsers; failures (unsupported / 404) fall
+  // back to a brief "unavailable" label rather than throwing.
+  _togglePlay(btn) {
+    const url = btn.dataset.audio;
+    if (!url) return;
+    if (this._playingBtn === btn && this._audio && !this._audio.paused) {
+      this._audio.pause();  // 'pause' listener resets the icon
+      return;
+    }
+    if (this._audio) this._audio.pause();
+    const audio = new Audio(url);
+    this._audio = audio;
+    this._playingBtn = btn;
+    audio.addEventListener("ended", () => this._setPlayIcon(btn, false));
+    audio.addEventListener("pause", () => this._setPlayIcon(btn, false));
+    audio.addEventListener("error", () => {
+      this._setPlayIcon(btn, false);
+      const label = btn.querySelector(".play-label");
+      if (label) label.textContent = "unavailable";
+    });
+    this._setPlayIcon(btn, true);
+    audio.play().catch(() => this._setPlayIcon(btn, false));
+  }
+
+  _setPlayIcon(btn, playing) {
+    btn.classList.toggle("playing", playing);
+    const icon = btn.querySelector(".play-icon");
+    const label = btn.querySelector(".play-label");
+    if (icon) icon.textContent = playing ? "⏸" : "▶";
+    if (label) label.textContent = playing ? "Playing…" : "Play call";
   }
   _updateTimes() {
     if (!this.shadowRoot) return;
@@ -787,6 +836,30 @@ class BirdWeatherBirdListCard extends HTMLElement {
           white-space: nowrap;
         }
 
+        /* "Play the call" button — plays the detection's soundscape in-browser. */
+        .play-call {
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
+          margin-top: 10px;
+          padding: 4px 12px 4px 10px;
+          border: none;
+          border-radius: 16px;
+          background: var(--primary-color);
+          color: var(--text-primary-color, #fff);
+          font: inherit;
+          font-size: 0.78em;
+          font-weight: 500;
+          cursor: pointer;
+        }
+        .play-call:hover { opacity: 0.9; }
+        .play-call:focus-visible {
+          outline: 2px solid var(--primary-color);
+          outline-offset: 2px;
+        }
+        .play-call .play-icon { font-size: 1.05em; line-height: 1; }
+        .play-call.playing { background: var(--accent-color, #ff9800); }
+
         .empty {
           padding: 10px 16px;
           font-size: 0.85em;
@@ -837,6 +910,9 @@ class BirdWeatherBirdListCard extends HTMLElement {
                       ${this._config.show_activity !== false && Array.isArray(item.hourly) && item.hourly.some((v) => v > 0)
                         ? `<div class="detail-activity" title="Hourly activity (last 7 days)"><span class="spark">${_sparkline(item.hourly)}</span><span class="peak">most active ~${_peakHourLabel(item.hourly)}</span></div>`
                         : ""}
+                      ${this._config.show_audio !== false && item.audio_url
+                        ? `<button class="play-call" type="button" data-audio="${_esc(item.audio_url)}" data-species="${_esc(item.species)}" aria-label="Play recording of ${_esc(item.species)}"><span class="play-icon">▶</span><span class="play-label">Play call</span></button>`
+                        : ""}
                       ${this._linksBlock(item, { ebird: true, aab: true, ml: true, bw: true }, "detail-links")}
                       ${this._attributionBlock(item)}
                     </div>
@@ -851,20 +927,29 @@ class BirdWeatherBirdListCard extends HTMLElement {
 
     const list = this.shadowRoot.querySelector(".list");
     list.addEventListener("click", (e) => {
-      // A link button lives inside the item; let it navigate without
-      // also toggling the detail view.
-      if (e.target.closest("a")) return;
+      // A link or the play-call button lives inside the item; let it act
+      // without also toggling the detail view.
+      if (e.target.closest("a, .play-call")) return;
       const item = e.target.closest(".item");
       if (item) this._toggleItem(item);
     });
     list.addEventListener("keydown", (e) => {
       if (e.key !== "Enter" && e.key !== " ") return;
-      // Enter on a focused link navigates; don't also toggle the item.
-      if (e.target.closest("a")) return;
+      // Enter/Space on a focused link or play button acts on it, not the row.
+      if (e.target.closest("a, .play-call")) return;
       const item = e.target.closest(".item");
       if (!item) return;
       e.preventDefault();  // Space would otherwise scroll the list
       this._toggleItem(item);
+    });
+
+    // "Play the call": play the detection's soundscape in-browser. stopPropagation
+    // keeps the row from toggling; one Audio instance, play/pause toggling.
+    this.shadowRoot.querySelectorAll(".play-call").forEach((btn) => {
+      btn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        this._togglePlay(btn);
+      });
     });
 
     // Replace broken images (S3 404, network drop) with the placeholder

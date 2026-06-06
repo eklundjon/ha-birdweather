@@ -17,6 +17,7 @@ from .client import BirdWeatherClient, BirdWeatherError
 from .const import (
     CONF_ABSENCE_DAYS,
     CONF_ALERT_MIN_CONFIDENCE,
+    CONF_AUDIO_ENABLED,
     CONF_FEED_MIN_CONFIDENCE,
     CONF_NOTABLE_RARITY_WEIGHT,
     ACTIVITY_BASELINE_DAYS,
@@ -28,6 +29,7 @@ from .const import (
     DIEL_WINDOW_DAYS,
     DEFAULT_ABSENCE_DAYS,
     DEFAULT_ALERT_MIN_CONFIDENCE,
+    DEFAULT_AUDIO_ENABLED,
     DEFAULT_FEED_MIN_CONFIDENCE,
     DEFAULT_NOTABLE_RARITY_WEIGHT,
     DEFAULT_SCAN_INTERVAL,
@@ -196,11 +198,17 @@ class BirdWeatherCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         daily_raw = {"detections": _filter_by_dt(raw_all, now - timedelta(hours=DAILY_WINDOW_HOURS))}
         recent_raw = {"detections": _filter_by_dt(daily_raw, now - timedelta(hours=RECENT_WINDOW_HOURS))}
 
-        detections = _normalise_detections(recent_raw)
+        # Master switch for "play the call" (opt-in; off by default). When off,
+        # audio_url is never surfaced, so the cards render no play button.
+        audio_enabled = self.config_entry.options.get(
+            CONF_AUDIO_ENABLED, DEFAULT_AUDIO_ENABLED
+        )
+
+        detections = _normalise_detections(recent_raw, audio_enabled)
         _apply_rarity_scores(detections, self._baseline_ranks, self._baseline_species_count)
 
         daily_count = sorted(
-            _normalise_detections(daily_raw),
+            _normalise_detections(daily_raw, audio_enabled),
             key=lambda x: x.get("count", 0),
             reverse=True,
         )
@@ -353,6 +361,7 @@ class BirdWeatherCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             self._baseline_species_count,
             self._image_urls.get,
             LAST_DETECTION_EVENT_LIMIT,
+            audio_enabled,
         )
 
         self._fire_detection_events(detections, newly_seen, prior_last_seen)
@@ -964,11 +973,14 @@ def _ml_url(sp_code: str | None) -> str | None:
     )
 
 
-def _normalise_detections(raw: Any) -> list[dict[str, Any]]:
+def _normalise_detections(
+    raw: Any, audio_enabled: bool = True
+) -> list[dict[str, Any]]:
     """Collapse the flat event list to one record per species, newest first.
 
     Image URLs come straight from the API (`image`); the latest event's
-    `confidence`/`audio` ride along on the per-species record.
+    `confidence`/`audio` ride along on the per-species record. `audio_url` is
+    only surfaced when audio is enabled (else None → no play button).
     """
     if not isinstance(raw, dict):
         return []
@@ -995,7 +1007,7 @@ def _normalise_detections(raw: Any) -> list[dict[str, Any]]:
                 "image_url": item.get("image"),
                 "last_seen": dt_str,
                 "_last_seen_dt": parsed,
-                "audio_url": item.get("audio"),
+                "audio_url": item.get("audio") if audio_enabled else None,
                 "confidence": item.get("confidence"),
                 "confidence_band": _confidence_band(item.get("confidence")),
                 "count": 0,
@@ -1009,7 +1021,7 @@ def _normalise_detections(raw: Any) -> list[dict[str, Any]]:
         if parsed is not None and (existing is None or parsed > existing):
             rec["last_seen"] = dt_str
             rec["_last_seen_dt"] = parsed
-            rec["audio_url"] = item.get("audio")
+            rec["audio_url"] = item.get("audio") if audio_enabled else None
             rec["confidence"] = item.get("confidence")
             rec["confidence_band"] = _confidence_band(item.get("confidence"))
             if item.get("image"):
@@ -1110,6 +1122,7 @@ def _build_recent_events(
     baseline_species_count: int,
     image_url_for,
     limit: int,
+    audio_enabled: bool = True,
 ) -> list[dict[str, Any]]:
     if not isinstance(raw, dict):
         return []
@@ -1135,7 +1148,7 @@ def _build_recent_events(
             "alpha6": item.get("alpha6"),
             "image_url": item.get("image") or image_url_for(sp_code),
             "last_seen": dt_str,
-            "audio_url": item.get("audio"),
+            "audio_url": item.get("audio") if audio_enabled else None,
             "confidence": item.get("confidence"),
             "confidence_band": _confidence_band(item.get("confidence")),
             "rarity_score": round(rank / denom, 4),

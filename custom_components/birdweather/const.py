@@ -88,6 +88,14 @@ CONF_ALERT_MIN_CONFIDENCE = "alert_min_confidence"
 DEFAULT_FEED_MIN_CONFIDENCE = 0
 DEFAULT_ALERT_MIN_CONFIDENCE = 0
 
+# Master switch for "play the call" (in-browser detection audio). Opt-in: off by
+# default. The feature is beta: BirdWeather soundscapes are silent when a station
+# has audio sharing disabled, and — unlike the local Haikubox cache — we stream
+# the CDN clip without measuring it, so we can't detect and hide a silent one.
+# When off, audio_url is never surfaced, so the cards show no play button.
+CONF_AUDIO_ENABLED = "audio_enabled"
+DEFAULT_AUDIO_ENABLED = False
+
 # Card confidence badge: a qualitative low / medium / high band DERIVED from the
 # numeric confidence. BirdWeather's own `certainty` string is useless for this —
 # ~99% of detections read "almost_certain" across the entire 0.36–0.98 range —

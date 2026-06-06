@@ -33,6 +33,7 @@
           "absence_days": "Unusual visitor: days unheard",
           "feed_min_confidence": "Hide detections below confidence",
           "alert_min_confidence": "Only alert above confidence",
+          "audio_enabled": "Audio: enable “play the call” (beta)",
           "watched_species": "Watch species (detected here)",
           "watched_species_extra": "Also watch (one name per line)"
         },
@@ -41,6 +42,7 @@
           "absence_days": "How long a known species must have gone unheard before it counts as an unusual visitor. Default 30 days.",
           "feed_min_confidence": "Suppress low-confidence “maybe” detections from the recent/last/notable/new sensors and the cards. 0% = show everything. The 24-hour total and diversity counts come straight from BirdWeather and aren’t affected.",
           "alert_min_confidence": "Don’t fire the new-species, unusual-visitor, or watched-species triggers below this confidence. 0% = alert on any. Independent of the hide filter, so you can see maybes but only be pinged on confident hits.",
+          "audio_enabled": "Beta. Off by default. Adds a “play the call” button on the cards that plays a detection’s soundscape in the browser. Heads-up: if your BirdWeather station has audio sharing turned off, its soundscapes are silent — the button will appear but play nothing (we stream BirdWeather’s clip directly and can’t detect a silent one). Off means no audio_url is exposed, so no button.",
           "watched_species": "Pick from species your station has already detected. A “watched species detected” device trigger fires when one is heard.",
           "watched_species_extra": "Add species you haven’t recorded yet (e.g. a hoped-for visitor) — one common name per line, exactly as BirdWeather spells it."
         }

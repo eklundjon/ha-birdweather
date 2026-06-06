@@ -14,6 +14,7 @@ from homeassistant.config_entries import (
 from homeassistant.core import callback
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.selector import (
+    BooleanSelector,
     NumberSelector,
     NumberSelectorConfig,
     NumberSelectorMode,
@@ -29,6 +30,7 @@ from .client import BirdWeatherClient, BirdWeatherError
 from .const import (
     CONF_ABSENCE_DAYS,
     CONF_ALERT_MIN_CONFIDENCE,
+    CONF_AUDIO_ENABLED,
     CONF_FEED_MIN_CONFIDENCE,
     CONF_NOTABLE_RARITY_WEIGHT,
     CONF_STATION_ID,
@@ -37,6 +39,7 @@ from .const import (
     CONF_WATCHED_SPECIES,
     DEFAULT_ABSENCE_DAYS,
     DEFAULT_ALERT_MIN_CONFIDENCE,
+    DEFAULT_AUDIO_ENABLED,
     DEFAULT_FEED_MIN_CONFIDENCE,
     DEFAULT_NOTABLE_RARITY_WEIGHT,
     DEFAULT_RADIUS_KM,
@@ -219,6 +222,10 @@ class BirdWeatherOptionsFlow(OptionsFlow):
                             unit_of_measurement="%",
                         )
                     ),
+                    vol.Required(
+                        CONF_AUDIO_ENABLED,
+                        default=opts.get(CONF_AUDIO_ENABLED, DEFAULT_AUDIO_ENABLED),
+                    ): BooleanSelector(),
                     vol.Optional(
                         CONF_WATCHED_SPECIES, default=saved
                     ): SelectSelector(
