@@ -145,6 +145,19 @@ query stationOverview(
 """
 
 
+# Time-of-day ("diel") activity: one BinnedSpeciesCount per species over the
+# period, each with sparse half-hourly bins {key (hour as float), count}. Powers
+# the per-species hourly sparkline and (summed) the station-wide activity curve.
+_TIME_OF_DAY_QUERY = """
+query stationTimeOfDay($id: ID!, $period: InputDuration) {
+  timeOfDayDetectionCounts(stationIds: [$id], period: $period) {
+    species { commonName }
+    bins { key count }
+  }
+}
+"""
+
+
 _STATION_QUERY = """
 query station($id: ID!) {
   station(id: $id) {
@@ -425,6 +438,38 @@ class BirdWeatherClient:
             "light": sensors.get("light"),
             "system": sensors.get("system"),
         }
+
+    async def get_time_of_day(self, station_id: str, days: int = 7) -> dict[str, Any]:
+        """Diel activity over the trailing `days`, folded to 24 hourly buckets.
+
+        Returns `{"by_species": {common_name: [24 ints]}, "station": [24 ints]}`.
+        The API's bins are sparse half-hourly floats (e.g. 7.0, 7.5); both fold
+        into the same integer hour, and `station` is the per-hour sum across all
+        species.
+        """
+        data = await self._query(
+            _TIME_OF_DAY_QUERY,
+            {"id": station_id, "period": {"count": days, "unit": "day"}},
+        )
+        rows = data.get("timeOfDayDetectionCounts") or []
+        by_species: dict[str, list[int]] = {}
+        station = [0] * 24
+        for row in rows:
+            name = (row.get("species") or {}).get("commonName")
+            if not name:
+                continue
+            hourly = [0] * 24
+            for b in row.get("bins") or []:
+                try:
+                    hour = int(float(b.get("key")))
+                except (TypeError, ValueError):
+                    continue
+                if 0 <= hour <= 23:
+                    count = int(b.get("count") or 0)
+                    hourly[hour] += count
+                    station[hour] += count
+            by_species[name] = hourly
+        return {"by_species": by_species, "station": station}
 
     async def get_species_counts(
         self, station_id: str, months: int = 1, limit: int = 200

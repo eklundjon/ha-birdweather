@@ -17,6 +17,33 @@ function _bandLabel(band) {
   return { low: "Low", medium: "Medium", high: "High" }[band] ?? "";
 }
 
+// Render a 24-bucket hourly array (the integration's `hourly` diel field) as a
+// Unicode sparkline, one block per hour, scaled to the array's own max. Returns
+// "" for an empty/all-zero array.
+function _sparkline(arr) {
+  if (!Array.isArray(arr) || arr.length === 0) return "";
+  const blocks = "▁▂▃▄▅▆▇█";
+  const max = Math.max(...arr);
+  if (max <= 0) return "";
+  return arr
+    .map((v) => blocks[v <= 0 ? 0 : Math.min(blocks.length - 1, Math.round((v / max) * (blocks.length - 1)))])
+    .join("");
+}
+
+// "HH:00" of the busiest hour in a 24-bucket array, or "".
+function _peakHourLabel(arr) {
+  if (!Array.isArray(arr) || arr.length === 0) return "";
+  let max = -1;
+  let idx = -1;
+  arr.forEach((v, h) => {
+    if (v > max) {
+      max = v;
+      idx = h;
+    }
+  });
+  return idx >= 0 && max > 0 ? String(idx).padStart(2, "0") + ":00" : "";
+}
+
 // Editor entity-picker filter: only show BirdWeather sensors that expose
 // a `detections` list (so the bird/list cards have something to render).
 // Excludes daily_count, which is a numeric-only total. Returns true
@@ -52,6 +79,7 @@ class BirdWeatherBirdListCardEditor extends HTMLElement {
       if (this._bwField)    this._bwField.value    = !!config.show_birdweather;
       if (this._confField)  this._confField.value  = config.show_confidence !== false;
       if (this._descField)  this._descField.value  = config.show_description !== false;
+      if (this._actField)   this._actField.value   = config.show_activity !== false;
     }
   }
 
@@ -71,6 +99,7 @@ class BirdWeatherBirdListCardEditor extends HTMLElement {
       if (this._bwField)    this._bwField.hass    = hass;
       if (this._confField)  this._confField.hass  = hass;
       if (this._descField)  this._descField.hass  = hass;
+      if (this._actField)   this._actField.hass   = hass;
     }
   }
 
@@ -222,7 +251,16 @@ class BirdWeatherBirdListCardEditor extends HTMLElement {
       descField.addEventListener("value-changed", (e) => this._fire({ show_description: e.detail.value }));
       this._descField = descField;
 
-      form.append(ebirdField, aabField, mlField, bwField, confField, descField);
+      // Diel activity sparkline in the detail view (default on).
+      const actField = document.createElement("ha-selector");
+      actField.label = "Show activity sparkline in detail view";
+      actField.selector = { boolean: {} };
+      if (this._hass) actField.hass = this._hass;
+      actField.value = this._config?.show_activity !== false;
+      actField.addEventListener("value-changed", (e) => this._fire({ show_activity: e.detail.value }));
+      this._actField = actField;
+
+      form.append(ebirdField, aabField, mlField, bwField, confField, descField, actField);
     }
 
     this.appendChild(form);
@@ -730,6 +768,25 @@ class BirdWeatherBirdListCard extends HTMLElement {
         .metric.conf-medium .conf-dot { background: var(--warning-color, #fb8c00); }
         .metric.conf-low .conf-dot { background: var(--error-color, #e53935); }
 
+        /* Diel activity sparkline — one Unicode block per hour (0–23), in a
+           monospace face so the bars align; the peak-hour label sits beside it. */
+        .detail-activity {
+          display: flex;
+          align-items: baseline;
+          flex-wrap: wrap;
+          gap: 4px 8px;
+          margin-top: 10px;
+          font-size: 0.8em;
+          color: var(--secondary-text-color);
+        }
+        .detail-activity .spark {
+          font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+          letter-spacing: 1px;
+          line-height: 1;
+          color: var(--primary-color);
+          white-space: nowrap;
+        }
+
         .empty {
           padding: 10px 16px;
           font-size: 0.85em;
@@ -777,6 +834,9 @@ class BirdWeatherBirdListCard extends HTMLElement {
                           : ""}
                         ${item.alpha ? `<div class="metric" title="Alpha banding code"><strong>${_esc(item.alpha)}</strong></div>` : ""}
                       </div>
+                      ${this._config.show_activity !== false && Array.isArray(item.hourly) && item.hourly.some((v) => v > 0)
+                        ? `<div class="detail-activity" title="Hourly activity (last 7 days)"><span class="spark">${_sparkline(item.hourly)}</span><span class="peak">most active ~${_peakHourLabel(item.hourly)}</span></div>`
+                        : ""}
                       ${this._linksBlock(item, { ebird: true, aab: true, ml: true, bw: true }, "detail-links")}
                       ${this._attributionBlock(item)}
                     </div>

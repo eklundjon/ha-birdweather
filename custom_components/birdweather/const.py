@@ -50,6 +50,11 @@ RARITY_PERIOD_MONTHS = 1
 ACTIVITY_BASELINE_DAYS = 30  # "typical day" = trailing-window total / this
 NEW_SPECIES_WINDOW_DAYS = 30  # species first heard within this many days = "new"
 
+# Diel activity (time-of-day histogram) window: the trailing days aggregated into
+# the per-hour "typical rhythm". A week smooths day-to-day noise while still
+# reflecting the current season; refreshed once per calendar day.
+DIEL_WINDOW_DAYS = 7
+
 # Automation events — one bus event, type-discriminated, mirroring haikubox.
 EVENT_BIRDWEATHER = "birdweather_event"
 TRIGGER_NEW_SPECIES = "new_species"

@@ -151,14 +151,24 @@ Every `Detection` carries `soundscape{url}` (the recording), already threaded as
   overlaid metadata (species, confidence, time) — the BirdNET-Go community does
   this with ffmpeg over their audio clips.
 
-### 5. Time-of-day / activity patterns
-`timeOfDayDetectionCounts` + `timeOfDayGte/Lte` filters. Haikubox has only
-whole-day totals.
-- A **diel activity heatmap** / "dawn chorus" card; "most active hour" per
-  species.
-- A compact **per-species hourly sparkline for *today*** (Unicode ▁▂▃▅▇ bars
-  across the hours), straight from `timeOfDayDetectionCounts` — a
-  community-favourite, very information-dense card.
+### 5. Time-of-day / activity patterns  ✅ done
+`timeOfDayDetectionCounts` returns one BinnedSpeciesCount per species with sparse
+half-hourly bins; the client folds these to 24 hourly buckets and sums a
+station-wide curve. Fetched once per calendar day over a trailing 7-day window
+(`DIEL_WINDOW_DAYS`) — a "typical rhythm" rather than today-only (sparse).
+- ✅ **Peak activity hour** sensor (station-wide "dawn chorus" peak): state =
+  busiest hour `HH:00`; attributes `hourly_activity` (24-bucket curve, for a
+  chart card) + `peak_hour` (int).
+- ✅ **Per-species hourly sparkline** in the list-card detail (Unicode ▁▂▃▅▇,
+  one block/hour, scaled to the species' own max) + "most active ~HH:00", behind
+  a `show_activity` toggle. The `hourly` array is stamped onto records via
+  `_with_links`, so it's consistent across every card list.
+- Follow-up (not built): a dedicated **diel heatmap card** (the `hourly_activity`
+  attribute already feeds any chart card, e.g. apexcharts, in the meantime). For
+  a today-vs-typical view, prefer a **`sparkline_window` config option
+  (1-day | 7-day)** over adding a *second* sparkline — the detail card is already
+  content-dense (see Cards / UI). 1-day would need a per-poll fetch (today
+  changes through the day) vs the once-daily 7-day fetch.
 
 ### 6. Regional / cross-station context
 `stations(query, ne, sw)` discovery (already used in onboarding) +
@@ -213,6 +223,13 @@ common-name-only, with a painful backfill.
 
 ## Cards / UI
 
+- **Detail-view content density.** The list card's expanded detail has grown a
+  lot — eBird / All About Birds / Macaulay / BirdWeather links, confidence band,
+  alpha code, Wikipedia description, activity sparkline, photo attribution — each
+  behind its own toggle. Consider curating/grouping (e.g. a compact vs. full
+  detail mode, or collapsing secondary metadata) rather than adding more rows.
+  New per-species datapoints should reuse an existing affordance (e.g. a window
+  toggle on the sparkline) over a new line.
 - **Revisit bird-card responsiveness holistically.** The portrait layout
   reserves a *fixed* text strip below the photo (`clamp()` heights in the
   `.img-wrap` formulas) sized for a worst-case line count. Adding the confidence
