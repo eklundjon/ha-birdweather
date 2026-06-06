@@ -89,6 +89,9 @@ class BirdWeatherCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._diel_station: list[int] = []
         self._diel_fetched_date: date | None = None
 
+        # Long-term statistics backfill — imported once per calendar day.
+        self._stats_imported_date: date | None = None
+
         # Sticky records — set on first detection, never cleared; persisted.
         self._last_detected: dict[str, Any] | None = None
         self._last_notable: dict[str, Any] | None = None
@@ -381,6 +384,19 @@ class BirdWeatherCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             _LOGGER.warning("Could not fetch station sensors: %s", err)
             sensors = {}
 
+        # Backfill HA long-term statistics with the station's true daily history
+        # (once per calendar day; idempotent). Needs the recorder + the history
+        # start from the overview. No recorder → skip cleanly for the day.
+        if self._stats_imported_date != today:
+            if "recorder" not in (self.hass.config.components if self.hass else ()):
+                self._stats_imported_date = today
+            elif overview.get("history_earliest"):
+                try:
+                    await self._import_history_statistics(today, overview["history_earliest"])
+                    self._stats_imported_date = today
+                except (aiohttp.ClientError, BirdWeatherError) as err:
+                    _LOGGER.warning("Could not import history statistics: %s", err)
+
         # Today's top species (true counts), enriched with the rarity baseline.
         # These records carry photo attribution from the API; fold it into the
         # cache so the baseline/new-species lists can show it for species that
@@ -646,6 +662,83 @@ class BirdWeatherCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         """Cached photo credit/license for a species code (None values if unknown)."""
         attr = self._image_attr.get(sp_code) or {}
         return {k: attr.get(k) for k in _ATTR_KEYS}
+
+    async def _import_history_statistics(self, today: date, earliest_iso: str) -> None:
+        """Backfill HA long-term statistics with the station's true daily history
+        from its first recorded day to today: detection totals (a cumulative
+        `sum` → the Statistics card shows detections per day/week/month) and
+        species richness (a daily `mean`). Re-runs daily and is idempotent on
+        (statistic_id, day), so it fills yesterday and corrects late data.
+
+        Full re-import each day keeps the cumulative sum correct without tracking
+        state; fine at typical history lengths — a busy multi-year station could
+        instead import incrementally via get_last_statistics (TODO)."""
+        # Lazy imports: only pull in recorder internals when actually backfilling.
+        from homeassistant.components.recorder.models import (  # noqa: PLC0415
+            StatisticData,
+            StatisticMeanType,
+            StatisticMetaData,
+        )
+        from homeassistant.components.recorder.statistics import (  # noqa: PLC0415
+            async_add_external_statistics,
+        )
+        from homeassistant.util import dt as dt_util  # noqa: PLC0415
+
+        try:
+            earliest = datetime.fromisoformat(earliest_iso).date()
+        except (TypeError, ValueError):
+            return
+        history = await self._client.get_daily_history(self.station_id, earliest, today)
+        if not history:
+            return
+
+        det_stats: list[StatisticData] = []
+        sp_stats: list[StatisticData] = []
+        cumulative = 0.0
+        for row in sorted(history, key=lambda r: r["date"]):
+            try:
+                day = date.fromisoformat(row["date"])
+            except (TypeError, ValueError):
+                continue
+            start = dt_util.start_of_local_day(day)  # local midnight, hour-aligned
+            cumulative += row["total"]
+            det_stats.append(
+                StatisticData(start=start, state=float(row["total"]), sum=cumulative)
+            )
+            species = float(row["species"])
+            sp_stats.append(
+                StatisticData(start=start, mean=species, min=species, max=species)
+            )
+        if not det_stats:
+            return
+
+        async_add_external_statistics(
+            self.hass,
+            StatisticMetaData(
+                has_sum=True,
+                has_mean=False,
+                mean_type=StatisticMeanType.NONE,
+                name=f"{self.device_name} daily detections",
+                source=DOMAIN,
+                statistic_id=f"{DOMAIN}:station_{self.station_id}_daily_detections",
+                unit_of_measurement="detections",
+                unit_class=None,
+            ),
+            det_stats,
+        )
+        async_add_external_statistics(
+            self.hass,
+            StatisticMetaData(
+                has_sum=False,
+                mean_type=StatisticMeanType.ARITHMETIC,
+                name=f"{self.device_name} daily species",
+                source=DOMAIN,
+                statistic_id=f"{DOMAIN}:station_{self.station_id}_daily_species",
+                unit_of_measurement="species",
+                unit_class=None,
+            ),
+            sp_stats,
+        )
 
     def _links_for(self, species: str, sp_code: str) -> dict[str, Any]:
         """Reference-link URLs for a record, surfaced by the integration so the

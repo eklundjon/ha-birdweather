@@ -1,6 +1,9 @@
 {
   "domain": "birdweather",
   "name": "BirdWeather",
+  "after_dependencies": [
+    "recorder"
+  ],
   "codeowners": [
     "@eklundjon"
   ],

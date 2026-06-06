@@ -43,6 +43,7 @@ async def main(station_id: str) -> None:
         coord._diel_by_species = {}
         coord._diel_station = []
         coord._diel_fetched_date = None
+        coord._stats_imported_date = None
         coord._last_detected = None
         coord._last_notable = None
         coord._seen_species = {}
