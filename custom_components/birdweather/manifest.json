@@ -1,13 +1,13 @@
 {
   "domain": "birdweather",
   "name": "BirdWeather",
+  "after_dependencies": [
+    "recorder"
+  ],
   "codeowners": [
     "@eklundjon"
   ],
   "config_flow": true,
-  "after_dependencies": [
-    "recorder"
-  ],
   "dependencies": [
     "http",
     "frontend"
