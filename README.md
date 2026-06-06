@@ -23,6 +23,7 @@ It reads the **public** BirdWeather GraphQL API anonymously — no account or AP
 - **Custom Lovelace cards** — a bird photo card and a ranked list card, with optional per-row links to **eBird**, **All About Birds**, **Macaulay Library**, and **BirdWeather**
 - **Species details** — expand a species in the list card for a Wikipedia description (fetched on demand; tap it to open the full article), its alpha banding code, and the reference links above
 - **Daily activity rhythm** — a **Peak activity hour** sensor (the station's "dawn chorus" peak) with a 24-hour `hourly_activity` curve for chart cards, plus a per-species **hourly sparkline** (▁▂▅█) in the list card's detail view showing when each bird is most active
+- **Historical trends (no Grafana)** — backfills Home Assistant's native **long-term Statistics** with the station's *true* daily history — detections per day and species per day, all the way back to its first recorded day — so HA's built-in Statistics graph card shows real multi-month trends out of the box
 - **Automations** — device triggers for new-species, unusual-visitor, and watched-species detections
 - **Watched species** — pick (or type) species to be alerted about; a device trigger fires when one is heard, plus a **Watched species** sensor listing the ones your station has recorded (drop it into the list card for a "Birds of interest" view)
 - **Confidence controls** — optional thresholds to hide low-confidence "maybe" detections from the feed and to gate alerts on confident hits only (independent, so you can see maybes but only be pinged on sure things); the cards show a low/medium/high confidence band
@@ -72,6 +73,20 @@ A ranked list (e.g. top species over the last 24 hours):
 ```yaml
 type: custom:birdweather-bird-list-card
 entity: sensor.<station>_daily_top_species
+```
+
+### Historical trends
+
+The integration backfills HA's long-term Statistics with the station's true daily history. View it with the built-in **Statistics graph** card (no Grafana needed) — the statistic IDs are `birdweather:station_<id>_daily_detections` (detections/day, totals per day/week/month) and `birdweather:station_<id>_daily_species` (species/day):
+
+```yaml
+type: statistics-graph
+title: Detections per day
+chart_type: bar
+period: day
+stat_types: [sum]
+entities:
+  - birdweather:station_<id>_daily_detections
 ```
 
 ## Options

@@ -158,6 +158,21 @@ query stationTimeOfDay($id: ID!, $period: InputDuration) {
 """
 
 
+# True per-day history (a row per calendar day in the from/to window): `total`
+# detections and a per-species `counts` breakdown (one entry per species heard
+# that day, so its length is the day's species richness). Powers the long-term
+# statistics backfill.
+_DAILY_HISTORY_QUERY = """
+query stationDailyHistory($id: ID!, $period: InputDuration) {
+  dailyDetectionCounts(stationIds: [$id], period: $period) {
+    date
+    total
+    counts { speciesId }
+  }
+}
+"""
+
+
 _STATION_QUERY = """
 query station($id: ID!) {
   station(id: $id) {
@@ -470,6 +485,34 @@ class BirdWeatherClient:
                     station[hour] += count
             by_species[name] = hourly
         return {"by_species": by_species, "station": station}
+
+    async def get_daily_history(
+        self, station_id: str, from_date: date, to_date: date
+    ) -> list[dict[str, Any]]:
+        """True per-day history over [from_date, to_date], one row per day:
+        `{"date": "YYYY-MM-DD", "total": int, "species": int}` where `species`
+        is that day's richness (distinct species heard). For the long-term
+        statistics backfill."""
+        data = await self._query(
+            _DAILY_HISTORY_QUERY,
+            {
+                "id": station_id,
+                "period": {"from": from_date.isoformat(), "to": to_date.isoformat()},
+            },
+        )
+        out: list[dict[str, Any]] = []
+        for row in data.get("dailyDetectionCounts") or []:
+            day = row.get("date")
+            if not day:
+                continue
+            out.append(
+                {
+                    "date": day,
+                    "total": int(row.get("total") or 0),
+                    "species": len(row.get("counts") or []),
+                }
+            )
+        return out
 
     async def get_species_counts(
         self, station_id: str, months: int = 1, limit: int = 200

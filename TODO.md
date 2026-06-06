@@ -180,17 +180,30 @@ single-box only.
   stations**.
 - Heavier: needs extra queries against nearby station IDs.
 
-### 7. History & phenology
-`InputDuration` accepts arbitrary `from`/`to` ranges over true per-day counts;
-`earliestDetectionAt` gives history start. Haikubox is one-day-at-a-time,
-common-name-only, with a painful backfill.
-- **Seasonality / migration charts**, **first-arrival dates** per species,
-  **year-over-year** comparisons, long-term trend sensors / a statistics view.
-- **Trends without Grafana:** give the numeric sensors a `state_class`
-  (measurement/total) so HA's built-in long-term Statistics graphs them
-  natively — the community typically bolts on Grafana; we can skip that for the
-  common case.
-- Relates to the Data-window-correctness items below.
+### 7. History & phenology  🟡 partial (A shipped)
+`InputDuration` accepts arbitrary `from`/`to` ranges over true per-day counts
+(`dailyDetectionCounts` → `{date, total, counts}`); `earliestDetectionAt` gives
+history start. Haikubox is one-day-at-a-time, common-name-only, painful backfill.
+- ✅ **A. Historical statistics backfill ("trends without Grafana, done right").**
+  `_import_history_statistics` backfills HA long-term statistics from the first
+  recorded day to today, once/calendar-day (idempotent), via
+  `async_add_external_statistics`: `birdweather:station_<id>_daily_detections`
+  (cumulative `sum` → per day/week/month bars) and `..._daily_species` (daily
+  `mean` richness). Spiked + verified end-to-end against a real recorder. The
+  `state_class` baseline (graphs going *forward*) was already in place; this adds
+  the *past*.
+  - Follow-up: full re-import each day is fine at typical lengths; a busy
+    multi-year station could import incrementally via `get_last_statistics`.
+    Also consider clearing the external stats on integration removal (currently
+    orphaned).
+- **B. First-arrival dates / phenology** (not built): per-species first
+  detection-of-the-year ("spring arrivals") from per-species `dailyDetectionCounts`.
+  Richer with multi-year history.
+- **C. Year-over-year** (not built): needs ≥1 year of history (`dayOfYear`
+  alignment). Test station 20184 only goes back to 2025-12-25.
+- **D. Seasonality curve** (not built): per-species detections-by-week-of-year —
+  the seasonal sibling of the diel sparkline. Adds to the (already dense) detail
+  card → prefer its own card / a window toggle (see Cards / UI).
 
 ## Data-window correctness
 
