@@ -40,6 +40,9 @@ async def main(station_id: str) -> None:
         coord._baseline_species_count = 0
         coord._baseline_fetched_date = None
         coord._baseline_items = []
+        coord._diel_by_species = {}
+        coord._diel_station = []
+        coord._diel_fetched_date = None
         coord._last_detected = None
         coord._last_notable = None
         coord._seen_species = {}
@@ -99,6 +102,14 @@ async def main(station_id: str) -> None:
                   f"credit={r.get('image_credit')!r} license={r.get('image_license')!r} "
                   f"credit_url={'yes' if r.get('image_credit_url') else None} "
                   f"license_url={'yes' if r.get('image_license_url') else None}")
+
+    print("\nDiel activity:")
+    hourly = data.get("hourly_activity")
+    print(f"  peak_activity_hour -> {data.get('peak_activity_hour')!r}")
+    print(f"  hourly_activity    -> {hourly}")
+    ld = data.get("last_detection") or {}
+    if ld.get("hourly"):
+        print(f"  {ld.get('species')!r} hourly -> {ld.get('hourly')}")
 
     sensors = data.get("sensors") or {}
     print("\nPUC hardware sensors:")

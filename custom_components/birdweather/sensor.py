@@ -211,6 +211,7 @@ async def async_setup_entry(
         BirdWeatherNewSpeciesWindowSensor(coordinator, station_id),
         BirdWeatherHistoryDepthSensor(coordinator, station_id),
         BirdWeatherWatchedSpeciesSensor(coordinator, station_id),
+        BirdWeatherPeakActivityHourSensor(coordinator, station_id),
     ]
 
     # PUC hardware sensors: create only the sub-suites the station actually
@@ -622,6 +623,35 @@ class BirdWeatherWatchedSpeciesSensor(_BirdWeatherSensor):
     @property
     def extra_state_attributes(self) -> dict:
         return {"detections": self.coordinator.data.get("watched_species", [])}
+
+
+class BirdWeatherPeakActivityHourSensor(_BirdWeatherSensor):
+    """Busiest hour of the day at this station (the "dawn chorus" peak).
+
+    Derived from BirdWeather's time-of-day detection counts over a trailing
+    week. State is the peak hour as "HH:00"; `hourly_activity` is the full
+    24-bucket curve (for a chart card) and `peak_hour` the bare integer.
+    """
+
+    _attr_translation_key = "peak_activity_hour"
+    _attr_icon = "mdi:clock-time-four-outline"
+    _unrecorded_attributes = frozenset({"hourly_activity"})
+
+    def __init__(self, coordinator: BirdWeatherCoordinator, station_id: str) -> None:
+        super().__init__(coordinator, station_id)
+        self._attr_unique_id = f"{station_id}_peak_activity_hour"
+
+    @property
+    def native_value(self) -> str | None:
+        hour = self.coordinator.data.get("peak_activity_hour")
+        return f"{hour:02d}:00" if hour is not None else None
+
+    @property
+    def extra_state_attributes(self) -> dict:
+        return {
+            "hourly_activity": self.coordinator.data.get("hourly_activity"),
+            "peak_hour": self.coordinator.data.get("peak_activity_hour"),
+        }
 
 
 class BirdWeatherHardwareSensor(_BirdWeatherSensor):

@@ -25,6 +25,7 @@ from .const import (
     CONFIDENCE_BAND_HIGH,
     CONFIDENCE_BAND_LOW,
     DAILY_WINDOW_HOURS,
+    DIEL_WINDOW_DAYS,
     DEFAULT_ABSENCE_DAYS,
     DEFAULT_ALERT_MIN_CONFIDENCE,
     DEFAULT_FEED_MIN_CONFIDENCE,
@@ -80,6 +81,13 @@ class BirdWeatherCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._baseline_ranks: dict[str, int] = {}
         self._baseline_species_count: int = 0
         self._baseline_fetched_date: date | None = None
+
+        # Diel activity (time-of-day histogram) — a slow-changing daily rhythm,
+        # so refreshed once per calendar day. `by_species` maps common name → a
+        # 24-bucket hourly count array; `station` is the summed station-wide curve.
+        self._diel_by_species: dict[str, list[int]] = {}
+        self._diel_station: list[int] = []
+        self._diel_fetched_date: date | None = None
 
         # Sticky records — set on first detection, never cleared; persisted.
         self._last_detected: dict[str, Any] | None = None
@@ -144,6 +152,19 @@ class BirdWeatherCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 "Rarity baseline not yet available — topSpecies fetch failed on "
                 "first poll and there is no cached baseline"
             )
+
+        # Refresh the diel activity histogram once per calendar day (best-effort;
+        # a blip leaves the prior curve in place rather than failing the poll).
+        if self._diel_fetched_date != today:
+            try:
+                diel = await self._client.get_time_of_day(
+                    self.station_id, days=DIEL_WINDOW_DAYS
+                )
+                self._diel_by_species = diel["by_species"]
+                self._diel_station = diel["station"]
+                self._diel_fetched_date = today
+            except (aiohttp.ClientError, BirdWeatherError) as err:
+                _LOGGER.warning("Could not fetch time-of-day activity: %s", err)
 
         try:
             raw_all = await self._client.get_raw_detections(
@@ -402,6 +423,10 @@ class BirdWeatherCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             "rarest_species": _ranked(self._with_links(seven_day_rare)),
             "watched_species": _ranked(self._with_links(self._build_watched())),
             "sensors": sensors,
+            # Diel activity (trailing 7-day, station-wide): the hourly curve for a
+            # chart card + the peak hour for the "Peak activity hour" sensor.
+            "hourly_activity": self._diel_station or None,
+            "peak_activity_hour": _peak_hour(self._diel_station),
         }
 
     # ------------------------------------------------------------------
@@ -646,9 +671,11 @@ class BirdWeatherCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         }
 
     def _with_links(self, records: list[dict[str, Any]]) -> list[dict[str, Any]]:
-        """Stamp eBird / Wikipedia / All About Birds URLs onto each record."""
+        """Stamp per-species metadata onto each record: reference-link URLs plus
+        the diel `hourly` activity array (24 buckets) for the card's sparkline."""
         for r in records:
             r.update(self._links_for(r.get("species", ""), r.get("sp_code", "")))
+            r["hourly"] = self._diel_by_species.get(r.get("species", ""))
         return records
 
     def _build_baseline_top(self) -> list[dict[str, Any]]:
@@ -823,6 +850,14 @@ def _ebird_url(sp_code: str | None) -> str | None:
 def _allaboutbirds_url(species: str | None) -> str | None:
     # allaboutbirds.org guide URLs key on the common name with spaces → underscores.
     return f"https://www.allaboutbirds.org/guide/{species.replace(' ', '_')}" if species else None
+
+
+def _peak_hour(hourly: list[int] | None) -> int | None:
+    """The hour (0–23) with the most detections in a 24-bucket diel array, or
+    None if the array is empty/all-zero."""
+    if not hourly or not any(hourly):
+        return None
+    return max(range(len(hourly)), key=lambda h: hourly[h])
 
 
 def _ml_url(sp_code: str | None) -> str | None:

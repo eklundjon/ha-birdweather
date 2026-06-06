@@ -22,6 +22,7 @@ It reads the **public** BirdWeather GraphQL API anonymously — no account or AP
 - **Extended silence** — diagnostic problem sensor that flags when a station goes a full day without reporting
 - **Custom Lovelace cards** — a bird photo card and a ranked list card, with optional per-row links to **eBird**, **All About Birds**, **Macaulay Library**, and **BirdWeather**
 - **Species details** — expand a species in the list card for a Wikipedia description (fetched on demand; tap it to open the full article), its alpha banding code, and the reference links above
+- **Daily activity rhythm** — a **Peak activity hour** sensor (the station's "dawn chorus" peak) with a 24-hour `hourly_activity` curve for chart cards, plus a per-species **hourly sparkline** (▁▂▅█) in the list card's detail view showing when each bird is most active
 - **Automations** — device triggers for new-species, unusual-visitor, and watched-species detections
 - **Watched species** — pick (or type) species to be alerted about; a device trigger fires when one is heard, plus a **Watched species** sensor listing the ones your station has recorded (drop it into the list card for a "Birds of interest" view)
 - **Confidence controls** — optional thresholds to hide low-confidence "maybe" detections from the feed and to gate alerts on confident hits only (independent, so you can see maybes but only be pinged on sure things); the cards show a low/medium/high confidence band
