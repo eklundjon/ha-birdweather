@@ -141,15 +141,21 @@ Deferred to a later PR:
   20184, so untestable now) — and largely redundant with HA's own weather.
 - Spectral light channels, accel/mag, GPS location.
 
-### 4. Detection audio ("play the call")
+### 4. Detection audio ("play the call")  🟡 partial (in-browser play shipped)
 Every `Detection` carries `soundscape{url}` (the recording), already threaded as
-`audio_url`. Haikubox drops its `wav` entirely (open issue #41 is a *request*).
-- "Play the call" affordance on the bird card from `audio_url`.
-- A `media_source` of recent detections; announce a notable/new bird's call on a
-  speaker; **audio verification** of a rare ID by ear before trusting it.
-- Stretch: **generate a shareable clip** (MP4) from the detection audio with
-  overlaid metadata (species, confidence, time) — the BirdNET-Go community does
-  this with ffmpeg over their audio clips.
+`audio_url`. Haikubox's `/detections` carries a `wav` field the coordinator drops
+(issue #41) — so this is portable to Haikubox by surfacing that.
+- ✅ **"Play the call" in-browser** — a play button on the bird card (over the
+  photo) and in the list card's detail view plays the soundscape via an HTML5
+  `Audio` element (FLAC, no CORS needed for media playback), play/pause toggling,
+  graceful fallback, behind a `show_audio` toggle. Only on feed-derived records
+  that carry `audio_url` (not the aggregate/store lists).
+- Follow-ups (not built): **cast to a media_player** (tap-action → speaker); a
+  `media_source` of recent detections; announce a notable/new bird's call on a
+  speaker; **audio verification** of a rare ID by ear. Stretch: a **shareable
+  clip** (MP4 w/ overlaid species/confidence/time) à la BirdNET-Go + ffmpeg.
+- Haikubox port: surface the `/detections` `wav` as `audio_url` (issue #41), then
+  the same card play affordance works there too.
 
 ### 5. Time-of-day / activity patterns  ✅ done
 `timeOfDayDetectionCounts` returns one BinnedSpeciesCount per species with sparse

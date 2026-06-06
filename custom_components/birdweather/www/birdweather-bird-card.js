@@ -54,6 +54,7 @@ class BirdWeatherBirdCardEditor extends HTMLElement {
       }
       if (this._attrField) this._attrField.value = config.show_attribution !== false;
       if (this._confField) this._confField.value = config.show_confidence !== false;
+      if (this._audioField) this._audioField.value = config.show_audio !== false;
     }
   }
 
@@ -228,6 +229,20 @@ class BirdWeatherBirdCardEditor extends HTMLElement {
       );
       this._confField = conf;
       this.appendChild(conf);
+
+      // "Play the call" toggle (default on). Adds a play button over the photo
+      // that plays the detection's soundscape recording in the browser.
+      const audio = document.createElement("ha-selector");
+      audio.label = "Show play-call button";
+      audio.selector = { boolean: {} };
+      if (this._hass) audio.hass = this._hass;
+      audio.value = this._config?.show_audio !== false;
+      audio.style.cssText = "display:block;padding:0 16px 16px";
+      audio.addEventListener("value-changed", (e) =>
+        this._fire({ show_audio: e.detail.value })
+      );
+      this._audioField = audio;
+      this.appendChild(audio);
     }
   }
 }
@@ -311,6 +326,35 @@ class BirdWeatherBirdCard extends HTMLElement {
     }
     // Close a list popup if the card is torn down while it's open.
     if (this._popupDialog) this._popupDialog.close();
+    if (this._audio) {
+      this._audio.pause();
+      this._audio = null;
+    }
+  }
+
+  // Play/pause the detection's soundscape in the browser (one Audio instance).
+  // FLAC plays in modern browsers; failures fall back to the play glyph.
+  _togglePlay(btn) {
+    const url = btn.dataset.audio;
+    if (!url) return;
+    if (this._playingBtn === btn && this._audio && !this._audio.paused) {
+      this._audio.pause();
+      return;
+    }
+    if (this._audio) this._audio.pause();
+    const audio = new Audio(url);
+    this._audio = audio;
+    this._playingBtn = btn;
+    const reset = () => {
+      btn.textContent = "▶";
+      btn.classList.remove("playing");
+    };
+    audio.addEventListener("ended", reset);
+    audio.addEventListener("pause", reset);
+    audio.addEventListener("error", reset);
+    btn.textContent = "⏸";
+    btn.classList.add("playing");
+    audio.play().catch(reset);
   }
   _updateTime() {
     if (!this._lastSeenIso || !this.shadowRoot) return;
@@ -472,6 +516,7 @@ class BirdWeatherBirdCard extends HTMLElement {
           scientific_name: top.scientific_name,
           last_seen: top.last_seen,
           confidence_band: top.confidence_band,
+          audio_url: top.audio_url,
           image_credit: top.image_credit,
           image_credit_url: top.image_credit_url,
           image_license: top.image_license,
@@ -707,6 +752,33 @@ class BirdWeatherBirdCard extends HTMLElement {
           color: inherit;
           text-decoration: underline;
         }
+        /* "Play the call" — a round button over the photo (bottom-left, opposite
+         * the credit). Plays the detection's soundscape in-browser. */
+        .play-call {
+          position: absolute;
+          left: 6px;
+          bottom: 6px;
+          z-index: 3;  /* above the blur (0), photo (1), credit (2) */
+          width: 34px;
+          height: 34px;
+          padding: 0;
+          border: none;
+          border-radius: 50%;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          font-size: 0.95rem;
+          line-height: 1;
+          color: #fff;
+          background: rgba(0, 0, 0, 0.5);
+          cursor: pointer;
+        }
+        .play-call:hover { background: rgba(0, 0, 0, 0.7); }
+        .play-call:focus-visible {
+          outline: 2px solid var(--primary-color);
+          outline-offset: 2px;
+        }
+        .play-call.playing { background: var(--accent-color, #ff9800); }
       </style>
       <ha-card class="${actionable ? "actionable" : ""}"${actionable ? ' role="button" tabindex="0"' : ""}>
         <div class="layout">
@@ -720,6 +792,9 @@ class BirdWeatherBirdCard extends HTMLElement {
                 : `<div class="img-placeholder">🐦</div>`}
               ${bird.image_url && this._config.show_attribution !== false
                 ? this._attributionHtml(bird)
+                : ""}
+              ${this._config.show_audio !== false && bird.audio_url
+                ? `<button class="play-call" type="button" data-audio="${_esc(bird.audio_url)}" aria-label="Play recording of ${_esc(bird.species)}" title="Play call">▶</button>`
                 : ""}
             </div>
             <div class="body">
@@ -758,6 +833,18 @@ class BirdWeatherBirdCard extends HTMLElement {
       a.addEventListener("click", (e) => e.stopPropagation());
       a.addEventListener("keydown", (e) => e.stopPropagation());
     });
+
+    // Play-call button: play in-browser without triggering the card tap action.
+    const playBtn = this.shadowRoot.querySelector(".play-call");
+    if (playBtn) {
+      playBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        this._togglePlay(playBtn);
+      });
+      playBtn.addEventListener("keydown", (e) => {
+        if (e.key === "Enter" || e.key === " ") e.stopPropagation();
+      });
+    }
 
     if (actionable) {
       const card = this.shadowRoot.querySelector("ha-card");
