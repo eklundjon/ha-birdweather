@@ -1,0 +1,55 @@
+name: Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  lint:
+    name: ruff
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+      # Pinned to match requirements_test.txt so local and CI agree.
+      - run: pip install ruff==0.15.17
+      - run: ruff check .
+
+  pytest:
+    name: ${{ matrix.name }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # The declared minimum (hacs.json) and the latest. Each PHACC release
+          # pins one exact Home Assistant version, so pinning PHACC pins HA.
+          - name: "HA 2025.4 (minimum)"
+            phacc: "0.13.236"   # Home Assistant 2025.4.4
+          - name: "HA latest"
+            phacc: "0.13.316"   # Home Assistant 2026.2.3
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+          cache: pip
+
+      - name: Install test dependencies
+        run: |
+          # Pin PHACC (and therefore Home Assistant) first; requirements_test
+          # then adds the integration's runtime deps without upgrading it.
+          pip install "pytest-homeassistant-custom-component==${{ matrix.phacc }}"
+          pip install -r requirements_test.txt
+
+      - name: Run tests
+        # Gate on coverage. This is the foundation suite (pure helpers, client,
+        # config/options flows); the floor ratchets up as the coordinator-poll,
+        # sensor, and trigger tests land in follow-up PRs.
+        run: >-
+          pytest --cov=custom_components.birdweather --cov-report=term-missing
+          --cov-fail-under=28

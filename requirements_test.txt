@@ -1,0 +1,18 @@
+# Test dependencies for the BirdWeather integration.
+#
+# pytest, pytest-asyncio and the aiohttp mock all come transitively via
+# pytest-homeassistant-custom-component (PHACC), which also pins the exact
+# Home Assistant version it was built against. CI pins a specific PHACC (and
+# thus HA) per matrix job — the 2025.4 floor and latest — so this file leaves
+# it unpinned, which locally pulls the latest for a quick dev loop:
+#
+#     uv venv --python 3.13 .venv-test
+#     uv pip install --python .venv-test/bin/python -r requirements_test.txt
+#     .venv-test/bin/python -m pytest
+#
+pytest-homeassistant-custom-component
+pytest-cov
+
+# Linter — pinned so local and CI agree (see the matching pin in
+# .github/workflows/test.yml). Config lives in pyproject.toml.
+ruff==0.15.17
