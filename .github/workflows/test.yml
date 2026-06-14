@@ -48,8 +48,8 @@ jobs:
 
       - name: Run tests
         # Gate on coverage. The floor ratchets up as the suite grows; the
-        # sensor, binary-sensor, device-trigger, and client-fetch tests land in
-        # follow-up PRs and will raise it further.
+        # client data-fetch/parse tests land in a follow-up PR and will raise it
+        # further.
         run: >-
           pytest --cov=custom_components.birdweather --cov-report=term-missing
-          --cov-fail-under=48
+          --cov-fail-under=80
