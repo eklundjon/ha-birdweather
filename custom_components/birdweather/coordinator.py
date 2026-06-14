@@ -1,11 +1,10 @@
 from __future__ import annotations
 
 import logging
-from datetime import date, datetime, timedelta, timezone
+from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
 import aiohttp
-
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import device_registry as dr
@@ -15,18 +14,19 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, Upda
 
 from .client import BirdWeatherClient, BirdWeatherError
 from .const import (
+    ACTIVITY_BASELINE_DAYS,
     CONF_ABSENCE_DAYS,
     CONF_ALERT_MIN_CONFIDENCE,
     CONF_AUDIO_ENABLED,
     CONF_FEED_MIN_CONFIDENCE,
     CONF_NOTABLE_RARITY_WEIGHT,
-    ACTIVITY_BASELINE_DAYS,
     CONF_STATION_ID,
     CONF_STATION_NAME,
+    CONF_WATCHED_EXTRA,
+    CONF_WATCHED_SPECIES,
     CONFIDENCE_BAND_HIGH,
     CONFIDENCE_BAND_LOW,
     DAILY_WINDOW_HOURS,
-    DIEL_WINDOW_DAYS,
     DEFAULT_ABSENCE_DAYS,
     DEFAULT_ALERT_MIN_CONFIDENCE,
     DEFAULT_AUDIO_ENABLED,
@@ -34,6 +34,7 @@ from .const import (
     DEFAULT_NOTABLE_RARITY_WEIGHT,
     DEFAULT_SCAN_INTERVAL,
     DETECTION_FETCH_LIMIT,
+    DIEL_WINDOW_DAYS,
     DOMAIN,
     EVENT_BIRDWEATHER,
     LAST_DETECTION_EVENT_LIMIT,
@@ -42,8 +43,6 @@ from .const import (
     NOTABILITY_WINDOW_HOURS,
     RARITY_PERIOD_MONTHS,
     RECENT_WINDOW_HOURS,
-    CONF_WATCHED_EXTRA,
-    CONF_WATCHED_SPECIES,
     TRIGGER_NEW_SPECIES,
     TRIGGER_UNUSUAL_VISITOR,
     TRIGGER_WATCHED_SPECIES,
@@ -136,7 +135,7 @@ class BirdWeatherCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             await self._load_stores()
 
         # UTC-anchored day boundaries (matches the pipeline's assumptions).
-        today = datetime.now(timezone.utc).date()
+        today = datetime.now(UTC).date()
 
         # Refresh the rarity baseline once per calendar day.
         if self._baseline_fetched_date != today:
@@ -191,7 +190,7 @@ class BirdWeatherCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 raw_all.get("detections", []), feed_min
             )
 
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         # The fetch returns the most-recent N events regardless of age; carve
         # the trailing 24h (and the 1h subset) out of it client-side. Busy
         # stations may exhaust the limit inside 24h — see DETECTION_FETCH_LIMIT.
@@ -490,7 +489,7 @@ class BirdWeatherCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             threshold_days = self.config_entry.options.get(
                 CONF_ABSENCE_DAYS, DEFAULT_ABSENCE_DAYS
             )
-            now = datetime.now(timezone.utc)
+            now = datetime.now(UTC)
             for sp in current_recent - self._prev_recent_species:
                 if sp in newly_seen:
                     continue
@@ -886,7 +885,7 @@ def _parse_dt(value: Any) -> datetime | None:
     except ValueError:
         return None
     if dt.tzinfo is None:
-        dt = dt.replace(tzinfo=timezone.utc)
+        dt = dt.replace(tzinfo=UTC)
     return dt
 
 
@@ -1029,7 +1028,7 @@ def _normalise_detections(
 
     results = sorted(
         by_species.values(),
-        key=lambda x: x.get("_last_seen_dt") or datetime.min.replace(tzinfo=timezone.utc),
+        key=lambda x: x.get("_last_seen_dt") or datetime.min.replace(tzinfo=UTC),
         reverse=True,
     )
     for r in results:

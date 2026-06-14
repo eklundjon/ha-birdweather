@@ -6,6 +6,12 @@ __pycache__/
 # Virtual environments
 venv/
 .venv/
+.venv-test/
+
+# Testing
+.coverage
+.pytest_cache/
+.ruff_cache/
 
 # Editor
 .vscode/

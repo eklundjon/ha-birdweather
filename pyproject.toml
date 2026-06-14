@@ -1,0 +1,26 @@
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+# Run async tests without per-test @pytest.mark.asyncio decorators.
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+# Make `custom_components.birdweather` importable from the repo root.
+pythonpath = ["."]
+
+[tool.ruff]
+# Self-owned, deliberately lean rule set (we don't track HA core's config —
+# nothing enforces it on a custom component, and chasing it is pure churn).
+# The ruff version is pinned in requirements_test.txt for reproducible CI.
+target-version = "py312"
+
+[tool.ruff.lint]
+select = [
+    "F",    # pyflakes — unused imports/vars, undefined names, f-string bugs
+    "E",    # pycodestyle errors
+    "W",    # pycodestyle warnings
+    "I",    # isort — import ordering
+    "B",    # flake8-bugbear — likely bugs
+    "C4",   # flake8-comprehensions
+    "UP",   # pyupgrade — modern syntax
+]
+# Line length is a judgement call here, not enforced (no formatter in play).
+ignore = ["E501"]
