@@ -47,9 +47,8 @@ jobs:
           pip install -r requirements_test.txt
 
       - name: Run tests
-        # Gate on coverage. The floor ratchets up as the suite grows; the
-        # client data-fetch/parse tests land in a follow-up PR and will raise it
-        # further.
+        # Gate on coverage. The floor sits a couple points below the current
+        # ~91%; ratchet it up as coverage grows rather than letting it drift down.
         run: >-
           pytest --cov=custom_components.birdweather --cov-report=term-missing
-          --cov-fail-under=80
+          --cov-fail-under=88
