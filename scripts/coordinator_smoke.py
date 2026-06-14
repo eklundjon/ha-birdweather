@@ -12,7 +12,9 @@ import aiohttp
 
 sys.path.insert(0, ".")
 from custom_components.birdweather.client import BirdWeatherClient  # noqa: E402
-from custom_components.birdweather.coordinator import BirdWeatherCoordinator  # noqa: E402
+from custom_components.birdweather.coordinator import (
+    BirdWeatherCoordinator,  # noqa: E402
+)
 
 
 class _FakeStore:

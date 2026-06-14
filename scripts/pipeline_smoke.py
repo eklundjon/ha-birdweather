@@ -11,7 +11,7 @@ Run:  python scripts/pipeline_smoke.py [station_id]
 
 import asyncio
 import sys
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import aiohttp
 
@@ -50,7 +50,7 @@ async def main(station_id: str) -> None:
     daily = sorted(_normalise_detections(raw), key=lambda x: x.get("count", 0), reverse=True)
     _apply_rarity_scores(daily, ranks, sp_count)
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     recent_raw = {"detections": _filter_by_dt(raw, now - timedelta(hours=RECENT_WINDOW_HOURS))}
     recent = _normalise_detections(recent_raw)
     _apply_rarity_scores(recent, ranks, sp_count)
