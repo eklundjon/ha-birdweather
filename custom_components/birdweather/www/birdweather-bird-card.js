@@ -806,12 +806,14 @@ class BirdWeatherBirdCard extends HTMLElement {
           color: inherit;
           text-decoration: underline;
         }
-        /* "Play the call" — a round button over the photo (bottom-left, opposite
-         * the credit). Plays the detection's soundscape in-browser. */
+        /* "Play the call" — a round button over the photo (top-left). Kept at the
+         * top, paired with the details button at top-right, so neither overlaps
+         * the photo-credit strip, which can span the full bottom edge. Plays the
+         * detection's soundscape in-browser. */
         .play-call {
           position: absolute;
           left: 6px;
-          bottom: 6px;
+          top: 6px;
           z-index: 3;  /* above the blur (0), photo (1), credit (2) */
           width: 34px;
           height: 34px;
@@ -833,12 +835,14 @@ class BirdWeatherBirdCard extends HTMLElement {
           outline-offset: 2px;
         }
         .play-call.playing { background: var(--accent-color, #ff9800); }
-        /* "Details" button — round overlay, bottom-right (opposite play). Opens
-         * this bird's full detail view in a popup. */
+        /* "Details" button — round overlay, top-right, paired with the play
+         * button at top-left. Both sit at the top so neither overlaps the
+         * photo-credit strip, which can span the full bottom edge. Opens this
+         * bird's full detail view in a popup. */
         .details-btn {
           position: absolute;
           right: 6px;
-          bottom: 6px;
+          top: 6px;
           z-index: 3;  /* above the blur (0), photo (1), credit (2) */
           width: 34px;
           height: 34px;
