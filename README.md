@@ -1,7 +1,7 @@
 # BirdWeather for Home Assistant
 
 [![hacs_badge](https://img.shields.io/badge/HACS-Custom-orange.svg)](https://github.com/hacs/integration)
-[![HA Version](https://img.shields.io/badge/Home%20Assistant-2024.12+-blue.svg?logo=homeassistant)](https://www.home-assistant.io)
+[![HA Version](https://img.shields.io/badge/Home%20Assistant-2025.4+-blue.svg?logo=homeassistant)](https://www.home-assistant.io)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 A Home Assistant custom integration for [BirdWeather](https://www.birdweather.com/) stations (PUC, BirdNET-Pi, and other registered stations). Surfaces recent detections, daily and rolling species counts, activity and diversity trends, and highlights unusual visitors — all with bird photos and custom Lovelace cards.
