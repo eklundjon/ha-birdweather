@@ -47,9 +47,9 @@ jobs:
           pip install -r requirements_test.txt
 
       - name: Run tests
-        # Gate on coverage. This is the foundation suite (pure helpers, client,
-        # config/options flows); the floor ratchets up as the coordinator-poll,
-        # sensor, and trigger tests land in follow-up PRs.
+        # Gate on coverage. The floor ratchets up as the suite grows; the
+        # sensor, binary-sensor, device-trigger, and client-fetch tests land in
+        # follow-up PRs and will raise it further.
         run: >-
           pytest --cov=custom_components.birdweather --cov-report=term-missing
-          --cov-fail-under=28
+          --cov-fail-under=48
