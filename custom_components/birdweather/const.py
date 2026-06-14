@@ -13,12 +13,16 @@ DEFAULT_RADIUS_KM = 25
 # Public GraphQL endpoint (see client.py). No auth for public stations.
 API_URL = "https://app.birdweather.com/graphql"
 
-# How often to poll (seconds).
+# How often to poll (seconds). User-tunable via CONF_SCAN_INTERVAL (in MINUTES,
+# 5–60); an options change reloads the entry so a new interval takes effect.
 DEFAULT_SCAN_INTERVAL = 600  # 10 minutes
+CONF_SCAN_INTERVAL = "scan_interval"  # stored in minutes
 
 # Sliding windows, mirroring the Haikubox pipeline: the recent (1h) view is
 # derived client-side from the 24h pull; "daily" sensors use the trailing 24h.
+# The recent window is user-tunable via CONF_RECENT_WINDOW_HOURS (1–24).
 RECENT_WINDOW_HOURS = 1
+CONF_RECENT_WINDOW_HOURS = "recent_window_hours"
 DAILY_WINDOW_HOURS = 24
 
 # How many recent detection events to pull per poll. BirdWeather's
@@ -43,12 +47,14 @@ NOTABILITY_WINDOW_HOURS = 24
 # fixed-location station's recent frequency is a better "what's normal here"
 # signal than a calendar-year tally, and sidesteps the year-reset problem.
 RARITY_PERIOD_MONTHS = 1
+CONF_RARITY_PERIOD_MONTHS = "rarity_period_months"  # user-tunable (1–24 months)
 
 # Activity / diversity / new-species windows. BirdWeather serves true per-period
 # counts natively, so these are computed from the API directly (no local per-day
 # store or backfill — unlike Haikubox, whose REST surface forced that).
 ACTIVITY_BASELINE_DAYS = 30  # "typical day" = trailing-window total / this
 NEW_SPECIES_WINDOW_DAYS = 30  # species first heard within this many days = "new"
+CONF_NEW_SPECIES_WINDOW_DAYS = "new_species_window_days"  # user-tunable (7–365)
 
 # Diel activity (time-of-day histogram) window: the trailing days aggregated into
 # the per-hour "typical rhythm". A week smooths day-to-day noise while still

@@ -11,6 +11,7 @@ from homeassistant.config_entries import (
     OptionsFlow,
 )
 from homeassistant.core import callback
+from homeassistant.data_entry_flow import section
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.selector import (
     BooleanSelector,
@@ -31,7 +32,11 @@ from .const import (
     CONF_ALERT_MIN_CONFIDENCE,
     CONF_AUDIO_ENABLED,
     CONF_FEED_MIN_CONFIDENCE,
+    CONF_NEW_SPECIES_WINDOW_DAYS,
     CONF_NOTABLE_RARITY_WEIGHT,
+    CONF_RARITY_PERIOD_MONTHS,
+    CONF_RECENT_WINDOW_HOURS,
+    CONF_SCAN_INTERVAL,
     CONF_STATION_ID,
     CONF_STATION_NAME,
     CONF_WATCHED_EXTRA,
@@ -42,8 +47,14 @@ from .const import (
     DEFAULT_FEED_MIN_CONFIDENCE,
     DEFAULT_NOTABLE_RARITY_WEIGHT,
     DEFAULT_RADIUS_KM,
+    DEFAULT_SCAN_INTERVAL,
     DOMAIN,
+    NEW_SPECIES_WINDOW_DAYS,
+    RARITY_PERIOD_MONTHS,
+    RECENT_WINDOW_HOURS,
 )
+
+SECTION_ADVANCED = "advanced"
 
 
 def _station_label(s: dict[str, Any]) -> str:
@@ -156,7 +167,11 @@ class BirdWeatherOptionsFlow(OptionsFlow):
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
         if user_input is not None:
-            return self.async_create_entry(title="", data=user_input)
+            # The Advanced knobs arrive nested under the section key; flatten them
+            # back to top-level so the coordinator reads plain options.
+            data = {k: v for k, v in user_input.items() if k != SECTION_ADVANCED}
+            data.update(user_input.get(SECTION_ADVANCED, {}))
+            return self.async_create_entry(title="", data=data)
 
         opts = self.config_entry.options
 
@@ -239,6 +254,62 @@ class BirdWeatherOptionsFlow(OptionsFlow):
                         CONF_WATCHED_EXTRA,
                         default=opts.get(CONF_WATCHED_EXTRA, ""),
                     ): TextSelector(TextSelectorConfig(multiline=True)),
+                    vol.Required(SECTION_ADVANCED): section(
+                        vol.Schema(
+                            {
+                                vol.Required(
+                                    CONF_RECENT_WINDOW_HOURS,
+                                    default=opts.get(
+                                        CONF_RECENT_WINDOW_HOURS, RECENT_WINDOW_HOURS
+                                    ),
+                                ): NumberSelector(
+                                    NumberSelectorConfig(
+                                        min=1, max=24, step=1,
+                                        mode=NumberSelectorMode.BOX,
+                                        unit_of_measurement="hours",
+                                    )
+                                ),
+                                vol.Required(
+                                    CONF_SCAN_INTERVAL,
+                                    default=opts.get(
+                                        CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL // 60
+                                    ),
+                                ): NumberSelector(
+                                    NumberSelectorConfig(
+                                        min=5, max=60, step=1,
+                                        mode=NumberSelectorMode.BOX,
+                                        unit_of_measurement="min",
+                                    )
+                                ),
+                                vol.Required(
+                                    CONF_RARITY_PERIOD_MONTHS,
+                                    default=opts.get(
+                                        CONF_RARITY_PERIOD_MONTHS, RARITY_PERIOD_MONTHS
+                                    ),
+                                ): NumberSelector(
+                                    NumberSelectorConfig(
+                                        min=1, max=24, step=1,
+                                        mode=NumberSelectorMode.BOX,
+                                        unit_of_measurement="months",
+                                    )
+                                ),
+                                vol.Required(
+                                    CONF_NEW_SPECIES_WINDOW_DAYS,
+                                    default=opts.get(
+                                        CONF_NEW_SPECIES_WINDOW_DAYS,
+                                        NEW_SPECIES_WINDOW_DAYS,
+                                    ),
+                                ): NumberSelector(
+                                    NumberSelectorConfig(
+                                        min=7, max=365, step=1,
+                                        mode=NumberSelectorMode.BOX,
+                                        unit_of_measurement="days",
+                                    )
+                                ),
+                            }
+                        ),
+                        {"collapsed": True},
+                    ),
                 }
             ),
         )

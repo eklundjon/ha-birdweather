@@ -10,12 +10,17 @@ from homeassistant.data_entry_flow import FlowResultType
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.birdweather.client import BirdWeatherError
+from custom_components.birdweather.config_flow import SECTION_ADVANCED
 from custom_components.birdweather.const import (
     CONF_ABSENCE_DAYS,
     CONF_ALERT_MIN_CONFIDENCE,
     CONF_AUDIO_ENABLED,
     CONF_FEED_MIN_CONFIDENCE,
+    CONF_NEW_SPECIES_WINDOW_DAYS,
     CONF_NOTABLE_RARITY_WEIGHT,
+    CONF_RARITY_PERIOD_MONTHS,
+    CONF_RECENT_WINDOW_HOURS,
+    CONF_SCAN_INTERVAL,
     CONF_STATION_ID,
     CONF_STATION_NAME,
     CONF_WATCHED_EXTRA,
@@ -163,12 +168,24 @@ async def test_options_flow_saves_values(hass: HomeAssistant) -> None:
             CONF_AUDIO_ENABLED: True,
             CONF_WATCHED_SPECIES: [],
             CONF_WATCHED_EXTRA: "Snowy Owl",
+            SECTION_ADVANCED: {
+                CONF_RECENT_WINDOW_HOURS: 6,
+                CONF_SCAN_INTERVAL: 15,
+                CONF_RARITY_PERIOD_MONTHS: 3,
+                CONF_NEW_SPECIES_WINDOW_DAYS: 14,
+            },
         },
     )
     assert result["type"] is FlowResultType.CREATE_ENTRY
     assert entry.options[CONF_NOTABLE_RARITY_WEIGHT] == 80
     assert entry.options[CONF_AUDIO_ENABLED] is True
     assert entry.options[CONF_WATCHED_EXTRA] == "Snowy Owl"
+    # Advanced section is flattened to top-level options the coordinator reads.
+    assert SECTION_ADVANCED not in entry.options
+    assert entry.options[CONF_SCAN_INTERVAL] == 15
+    assert entry.options[CONF_RECENT_WINDOW_HOURS] == 6
+    assert entry.options[CONF_RARITY_PERIOD_MONTHS] == 3
+    assert entry.options[CONF_NEW_SPECIES_WINDOW_DAYS] == 14
 
 
 async def test_options_flow_prefills_saved_values(hass: HomeAssistant) -> None:
