@@ -1,7 +1,10 @@
-// Seeded from ha-haikubox/haikubox-bird-card.js via scripts/sync-cards.sh, then
-// FORKED — BirdWeather-only changes live here now (photo attribution; blur-fill
-// image handling for BirdWeather's square photos). Hand-maintained: do NOT
-// re-run sync-cards.sh over this file — it would drop those. See sync-cards.sh.
+// Bird photo card. GENERATED from ha-haikubox's haikubox-bird-card.js (the
+// canonical card) via scripts/sync-cards.sh — brand substitution plus the
+// FEATURES flip below. The render code is identical generic logic that reads
+// only the common `detections[]` sensor contract and null-guards on missing
+// data; the only BirdWeather divergence is the FEATURES object (BirdWeather
+// supplies confidence and photo-credit data, so those toggles are enabled).
+// Don't hand-edit: change the Haikubox card and re-run sync-cards.sh.
 function _esc(s) {
   return String(s ?? "")
     .replace(/&/g, "&amp;")
@@ -9,6 +12,13 @@ function _esc(s) {
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;");
 }
+
+// Per-integration feature flags (see sync-cards.sh — the one substitution the
+// sync makes beyond brand tokens). The render code carries the full feature set
+// and null-guards on missing data; these flags just show/hide the matching
+// editor toggles. BirdWeather supplies confidence and photo-credit data, so
+// both are enabled here (Haikubox sets them false).
+const FEATURES = { confidence: true, attribution: true };
 
 // Confidence band → display label. The integration derives the low/medium/high
 // band from each detection's numeric confidence and surfaces it as
@@ -55,6 +65,7 @@ class BirdWeatherBirdCardEditor extends HTMLElement {
       if (this._attrField) this._attrField.value = config.show_attribution !== false;
       if (this._confField) this._confField.value = config.show_confidence !== false;
       if (this._audioField) this._audioField.value = config.show_audio !== false;
+      if (this._detailsField) this._detailsField.value = config.show_details !== false;
     }
   }
 
@@ -204,31 +215,35 @@ class BirdWeatherBirdCardEditor extends HTMLElement {
 
       // Photo credit toggle (default on). The station photos are CC-licensed,
       // so the credit is normally required — hiding it may breach the licence.
-      const attr = document.createElement("ha-selector");
-      attr.label = "Show photo credit";
-      attr.selector = { boolean: {} };
-      if (this._hass) attr.hass = this._hass;
-      attr.value = this._config?.show_attribution !== false;
-      attr.style.cssText = "display:block;padding:0 16px 16px";
-      attr.addEventListener("value-changed", (e) =>
-        this._fire({ show_attribution: e.detail.value })
-      );
-      this._attrField = attr;
-      this.appendChild(attr);
+      if (FEATURES.attribution) {
+        const attr = document.createElement("ha-selector");
+        attr.label = "Show photo credit";
+        attr.selector = { boolean: {} };
+        if (this._hass) attr.hass = this._hass;
+        attr.value = this._config?.show_attribution !== false;
+        attr.style.cssText = "display:block;padding:0 16px 16px";
+        attr.addEventListener("value-changed", (e) =>
+          this._fire({ show_attribution: e.detail.value })
+        );
+        this._attrField = attr;
+        this.appendChild(attr);
+      }
 
       // Confidence band toggle (default on). Shows a low/medium/high label
       // under the timestamp for detections that carry a confidence.
-      const conf = document.createElement("ha-selector");
-      conf.label = "Show confidence";
-      conf.selector = { boolean: {} };
-      if (this._hass) conf.hass = this._hass;
-      conf.value = this._config?.show_confidence !== false;
-      conf.style.cssText = "display:block;padding:0 16px 16px";
-      conf.addEventListener("value-changed", (e) =>
-        this._fire({ show_confidence: e.detail.value })
-      );
-      this._confField = conf;
-      this.appendChild(conf);
+      if (FEATURES.confidence) {
+        const conf = document.createElement("ha-selector");
+        conf.label = "Show confidence";
+        conf.selector = { boolean: {} };
+        if (this._hass) conf.hass = this._hass;
+        conf.value = this._config?.show_confidence !== false;
+        conf.style.cssText = "display:block;padding:0 16px 16px";
+        conf.addEventListener("value-changed", (e) =>
+          this._fire({ show_confidence: e.detail.value })
+        );
+        this._confField = conf;
+        this.appendChild(conf);
+      }
 
       // "Play the call" toggle (default on). Adds a play button over the photo
       // that plays the detection's soundscape recording in the browser.
@@ -243,6 +258,20 @@ class BirdWeatherBirdCardEditor extends HTMLElement {
       );
       this._audioField = audio;
       this.appendChild(audio);
+
+      // "Details" button toggle (default on). Adds an ⓘ button over the photo
+      // that opens this bird's full detail view in a popup.
+      const details = document.createElement("ha-selector");
+      details.label = "Show details button";
+      details.selector = { boolean: {} };
+      if (this._hass) details.hass = this._hass;
+      details.value = this._config?.show_details !== false;
+      details.style.cssText = "display:block;padding:0 16px 16px";
+      details.addEventListener("value-changed", (e) =>
+        this._fire({ show_details: e.detail.value })
+      );
+      this._detailsField = details;
+      this.appendChild(details);
     }
   }
 }
@@ -425,11 +454,35 @@ class BirdWeatherBirdCard extends HTMLElement {
     }
   }
 
-  // Custom action: pop up a modal showing the full ranked species list
-  // for this card's sensor, using the bird-list card. Native <dialog>
-  // gives us a backdrop, focus trap, and ESC-to-close for free; no
-  // external dependency (e.g. browser_mod) required.
+  // Custom action: pop up a modal showing the full ranked species list for
+  // this card's sensor, using the bird-list card.
   _openListPopup() {
+    this._openCardPopup(
+      { entity: this._config?.entity, top: 50, row_size: "large" },
+      "display:block;width:min(92vw,560px);height:min(80vh,720px)",
+    );
+  }
+
+  // "Details" button: pop up THIS bird's full detail view — the bird-list card
+  // in detail_only mode, scoped to this card's `position`. Reuses the list
+  // card's entire detail render (description, sparkline, audio, links,
+  // attribution); no duplicated rendering here.
+  _openDetailsPopup() {
+    this._openCardPopup(
+      {
+        entity: this._config?.entity,
+        position: this._config?.position ?? 1,
+        detail_only: true,
+        row_size: "large",
+      },
+      "display:block;width:clamp(320px,70vw,920px);height:auto;max-height:85vh;overflow:auto",
+    );
+  }
+
+  // Shared <dialog> popup hosting a birdweather-bird-list-card. Native <dialog>
+  // gives us a backdrop, focus trap, and ESC-to-close for free; no external
+  // dependency (e.g. browser_mod) required.
+  _openCardPopup(cardConfig, sizeCss) {
     const entity = this._config?.entity;
     if (!entity || !customElements.get("birdweather-bird-list-card")) return;
     if (this._popupDialog) return;  // already open
@@ -452,12 +505,12 @@ class BirdWeatherBirdCard extends HTMLElement {
 
     const listCard = document.createElement("birdweather-bird-list-card");
     try {
-      listCard.setConfig({ entity, top: 50, row_size: "large" });
+      listCard.setConfig(cardConfig);
     } catch (_) {
       return;
     }
     // Give the card a concrete box; its internal list scrolls past this.
-    listCard.style.cssText = "display:block;width:min(92vw,560px);height:min(80vh,720px)";
+    listCard.style.cssText = sizeCss;
     if (this._hass) listCard.hass = this._hass;
 
     dialog.appendChild(listCard);
@@ -554,10 +607,12 @@ class BirdWeatherBirdCard extends HTMLElement {
         }
 
         /*
-         * Portrait layout — three priorities when vertical space is tight:
-         *  1. Crop the photo (fill full width, but no wider than 3:2 aspect ratio)
-         *  2. Drop the scientific name   [portrait B query below]
-         *  3. Shrink the photo to 3:2, centre horizontally  [portrait C query below]
+         * Portrait layout — priorities when vertical space is tight. The photo
+         * is always FULL WIDTH (a contained image over an edge-to-edge blur
+         * fill), so the fill reaches both side edges in every case:
+         *  1. Photo height = card width (square), capped to leave a text area
+         *  2. Drop the scientific name         [portrait B query below]
+         *  3. Reduce the photo height for text  [portrait C query below]
          */
         .img-wrap {
           flex: 0 0 auto;
@@ -646,26 +701,25 @@ class BirdWeatherBirdCard extends HTMLElement {
           }
         }
 
-        /*
-         * Portrait priority 2: drop scientific name when card is wider than ~1:1.
-         * max-aspect-ratio: 3/2 limits this rule to portrait mode only.
-         */
-        @container (min-aspect-ratio: 1.05) and (max-aspect-ratio: 3/2) {
-          .scientific { display: none; }
-        }
+        /* The scientific name is always shown in portrait now. (It used to be
+         * dropped at aspect 1.05–1.5; many squat-but-roomy cards lost it with
+         * space to spare.) If a layout looks crowded, grow the photo-height
+         * reserve rather than hiding the name. */
 
         /*
-         * Portrait priority 3: card is too short for full-width 3:2 photo + text.
-         * Shrink photo to 3:2, centre horizontally. Here the scientific name is
-         * already hidden (priority 2), so the body is up to three lines (species,
-         * time, confidence); reserve clamps 86–160px to fit them without the
-         * species name riding up under the photo.
+         * Portrait priority 3: card is too short for a full-height photo + text.
+         * Reduce the photo HEIGHT to free text space — but keep it FULL WIDTH so
+         * the blur-fill still reaches the card's side edges (the contained image
+         * just letterboxes within). (It used to shrink to a centered 3:2 box, a
+         * leftover from the object-fit:cover era, which left bare card showing
+         * at the sides.) The body here can be up to four lines (species,
+         * scientific name, time, confidence); reserve clamps 86–160px. If the
+         * name rides up under the photo on squat cards, grow this reserve.
          */
         @container (min-aspect-ratio: 1.2) and (max-aspect-ratio: 3/2) {
           .img-wrap {
-            flex: 0 0 auto;
             height: calc(100cqh - clamp(86px, 30cqh, 160px));
-            width: min(100cqw, calc((100cqh - clamp(86px, 30cqh, 160px)) * 1.5));
+            width: 100%;
           }
         }
 
@@ -752,12 +806,14 @@ class BirdWeatherBirdCard extends HTMLElement {
           color: inherit;
           text-decoration: underline;
         }
-        /* "Play the call" — a round button over the photo (bottom-left, opposite
-         * the credit). Plays the detection's soundscape in-browser. */
+        /* "Play the call" — a round button over the photo (top-left). Kept at the
+         * top, paired with the details button at top-right, so neither overlaps
+         * the photo-credit strip, which can span the full bottom edge. Plays the
+         * detection's soundscape in-browser. */
         .play-call {
           position: absolute;
           left: 6px;
-          bottom: 6px;
+          top: 6px;
           z-index: 3;  /* above the blur (0), photo (1), credit (2) */
           width: 34px;
           height: 34px;
@@ -779,6 +835,34 @@ class BirdWeatherBirdCard extends HTMLElement {
           outline-offset: 2px;
         }
         .play-call.playing { background: var(--accent-color, #ff9800); }
+        /* "Details" button — round overlay, top-right, paired with the play
+         * button at top-left. Both sit at the top so neither overlaps the
+         * photo-credit strip, which can span the full bottom edge. Opens this
+         * bird's full detail view in a popup. */
+        .details-btn {
+          position: absolute;
+          right: 6px;
+          top: 6px;
+          z-index: 3;  /* above the blur (0), photo (1), credit (2) */
+          width: 34px;
+          height: 34px;
+          padding: 0;
+          border: none;
+          border-radius: 50%;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          font-size: 1.1rem;
+          line-height: 1;
+          color: #fff;
+          background: rgba(0, 0, 0, 0.5);
+          cursor: pointer;
+        }
+        .details-btn:hover { background: rgba(0, 0, 0, 0.7); }
+        .details-btn:focus-visible {
+          outline: 2px solid var(--primary-color);
+          outline-offset: 2px;
+        }
       </style>
       <ha-card class="${actionable ? "actionable" : ""}"${actionable ? ' role="button" tabindex="0"' : ""}>
         <div class="layout">
@@ -795,6 +879,9 @@ class BirdWeatherBirdCard extends HTMLElement {
                 : ""}
               ${this._config.show_audio !== false && bird.audio_url
                 ? `<button class="play-call" type="button" data-audio="${_esc(bird.audio_url)}" aria-label="Play recording of ${_esc(bird.species)}" title="Play call">▶</button>`
+                : ""}
+              ${this._config.show_details !== false
+                ? `<button class="details-btn" type="button" aria-label="Show details for ${_esc(bird.species)}" title="Details">ⓘ</button>`
                 : ""}
             </div>
             <div class="body">
@@ -842,6 +929,19 @@ class BirdWeatherBirdCard extends HTMLElement {
         this._togglePlay(playBtn);
       });
       playBtn.addEventListener("keydown", (e) => {
+        if (e.key === "Enter" || e.key === " ") e.stopPropagation();
+      });
+    }
+
+    // Details button: open this bird's full detail popup. stopPropagation keeps
+    // it from also firing the card's tap action.
+    const detailsBtn = this.shadowRoot.querySelector(".details-btn");
+    if (detailsBtn) {
+      detailsBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        this._openDetailsPopup();
+      });
+      detailsBtn.addEventListener("keydown", (e) => {
         if (e.key === "Enter" || e.key === " ") e.stopPropagation();
       });
     }

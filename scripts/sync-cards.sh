@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 #
-# sync-cards.sh — regenerate the BirdWeather Lovelace cards from the (more
-# mature) Haikubox cards by brand substitution.
+# sync-cards.sh — regenerate the BirdWeather Lovelace cards from the (canonical,
+# more complete) Haikubox cards by brand substitution + a FEATURES flip.
 #
 # The two integrations deliberately keep DISTINCT branded element names
 # (`haikubox-bird-card` vs `birdweather-bird-card`, etc.) so that when both
@@ -9,20 +9,26 @@
 # no first-define-wins race if the two are on different versions. The card
 # *bodies* are otherwise identical generic logic (they read only the common
 # `detections[]` sensor contract), so the BirdWeather variants are produced by
-# substituting the brand tokens:
+# substituting the brand tokens plus flipping the FEATURES flags:
 #
 #     Haikubox -> BirdWeather      (class names, customCards labels, comments)
 #     haikubox -> birdweather      (element tags, platform filter, popup ids)
+#     FEATURES { …: false }        -> true  (BirdWeather supplies that data)
 #
 # Source path defaults to a sibling ha-haikubox checkout; override with $1.
 #
-# STATUS (forked 2026-06-04): the cards have now FORKED. BirdWeather has card
-# features Haikubox lacks — photo attribution (BirdWeather supplies
-# imageCredit/License; Haikubox doesn't) and blur-fill image handling (its
-# photos are 1:1 squares vs Haikubox's 4:3). This script therefore captured only
-# the ONE-TIME seeding and must NOT be re-run over the live cards — it would
-# silently drop those BirdWeather-only changes. Kept for reference / to
-# re-derive a fresh starting point. The BirdWeather cards are now hand-maintained.
+# STATUS (re-converged 2026-06-14): the earlier fork is HEALED. Haikubox has
+# since absorbed both fork reasons — photo attribution and blur-fill image
+# handling are now in the canonical Haikubox cards (carried for everyone,
+# null-guarded, gated by the FEATURES object) — and Haikubox additionally gained
+# the single-bird detail popup (the ⓘ button). So Haikubox is once again the
+# canonical card and BirdWeather is regenerated from it.
+#
+# After running, RE-APPLY the two by-hand bits this sync does NOT carry:
+#   1. The file header comments (each card's top-of-file block).
+#   2. The BirdWeather reference link on the details card (`birdweather_url`),
+#      which the canonical Haikubox card intentionally omits — grep the live
+#      card for `bw:` / `birdweather_url` / `bwField` to see the four spots.
 
 set -euo pipefail
 
@@ -43,9 +49,16 @@ for pair in "${MAP[@]}"; do
   dst="$DST/$dst_name"
   [ -f "$src" ] || { echo "ERROR: source not found: $src" >&2; exit 1; }
 
-  {
-    echo "// GENERATED from ha-haikubox/$src_name by scripts/sync-cards.sh — do not edit directly."
-    sed -e 's/Haikubox/BirdWeather/g' -e 's/haikubox/birdweather/g' "$src"
-  } > "$dst"
+  # Brand tokens + the FEATURES flip (each card matches only its own flag line).
+  sed -e 's/Haikubox/BirdWeather/g' \
+      -e 's/haikubox/birdweather/g' \
+      -e 's/const FEATURES = { confidence: false, attribution: false };/const FEATURES = { confidence: true, attribution: true };/' \
+      -e 's/const FEATURES = { confidence: false, activity: false };/const FEATURES = { confidence: true, activity: true };/' \
+      "$src" > "$dst"
   echo "wrote $dst"
 done
+
+echo
+echo "NOW re-apply by hand (not carried by this sync):"
+echo "  - the top-of-file header comment in each card"
+echo "  - the BirdWeather reference link on the details card (grep: bw: / birdweather_url / bwField)"
