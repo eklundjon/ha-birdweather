@@ -483,7 +483,11 @@ class BirdWeatherCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
         for sp in newly_seen:
             if _alertable(by_species[sp]):
-                self._fire_event(TRIGGER_NEW_SPECIES, by_species[sp])
+                self._fire_event(
+                    TRIGGER_NEW_SPECIES,
+                    by_species[sp],
+                    lifetime_species_count=len(self._seen_species),
+                )
 
         if self._prev_recent_species is not None:
             threshold_days = self.config_entry.options.get(

@@ -72,6 +72,9 @@ async def test_new_species_event_fires(hass: HomeAssistant) -> None:
     assert len(events) == 1
     assert events[0].data["type"] == "new_species"
     assert events[0].data["species"] == "Barred Owl"
+    # new_species carries the lifetime count (the blueprints read it): the
+    # pre-seeded robin plus the owl just recorded this poll.
+    assert events[0].data["lifetime_species_count"] == 2
 
 
 async def test_watched_species_event_fires(hass: HomeAssistant) -> None:

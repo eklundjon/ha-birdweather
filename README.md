@@ -25,7 +25,7 @@ It reads the **public** BirdWeather GraphQL API anonymously — no account or AP
 - **Play the call** _(beta)_ — a play button on the bird card and in the list card's detail plays the detection's recording (soundscape) right in the browser. **Off by default** — turn it on in the integration options. Note: if your BirdWeather station has audio sharing disabled, its soundscapes are silent, so the button plays nothing — the integration streams BirdWeather's clip directly and can't detect a silent one
 - **Daily activity rhythm** — a **Peak activity hour** sensor (the station's "dawn chorus" peak) with a 24-hour `hourly_activity` curve for chart cards, plus a per-species **hourly sparkline** (▁▂▅█) in the list card's detail view showing when each bird is most active
 - **Historical trends (no Grafana)** — backfills Home Assistant's native **long-term Statistics** with the station's *true* daily history — detections per day and species per day, all the way back to its first recorded day — so HA's built-in Statistics graph card shows real multi-month trends out of the box
-- **Automations** — device triggers for new-species, unusual-visitor, and watched-species detections
+- **Automations** — device triggers for new-species, unusual-visitor, and watched-species detections, plus blueprints for photo push notifications and playing the call on a media player
 - **Watched species** — pick (or type) species to be alerted about; a device trigger fires when one is heard, plus a **Watched species** sensor listing the ones your station has recorded (drop it into the list card for a "Birds of interest" view)
 - **Confidence controls** — optional thresholds to hide low-confidence "maybe" detections from the feed and to gate alerts on confident hits only (independent, so you can see maybes but only be pinged on sure things); the cards show a low/medium/high confidence band
 - **PUC hardware sensors** — for BirdWeather **PUC** stations, onboard environment readings (temperature, humidity, barometric pressure, sound level, air quality, light) and device-health diagnostics (battery voltage, power source, Wi-Fi signal, SD-card free) — created automatically, and only for the hardware your station actually reports (a BirdNET-Pi gets none)
@@ -89,6 +89,23 @@ stat_types: [sum]
 entities:
   - birdweather:station_<id>_daily_detections
 ```
+
+### Automations & blueprints
+
+The integration exposes three **device triggers** — new-species, unusual-visitor, and watched-species — in the automation editor (**When → Device**). Each is a filtered view of the `birdweather_event` bus event, whose payload carries the species, scientific name, photo (`image_url`), reference links (`ebird_url`, `wikipedia_url`), the call recording (`audio_url`), and per-trigger extras (`days_absent`, `lifetime_species_count`).
+
+Four ready-made **blueprints** are included as worked examples. Import each via **Settings → Automations & scenes → Blueprints → Import blueprint**, pasting the raw URL:
+
+```
+https://github.com/eklundjon/ha-birdweather/blob/main/blueprints/automation/birdweather/new_species_notification.yaml
+https://github.com/eklundjon/ha-birdweather/blob/main/blueprints/automation/birdweather/unusual_visitor_notification.yaml
+https://github.com/eklundjon/ha-birdweather/blob/main/blueprints/automation/birdweather/watched_species_notification.yaml
+https://github.com/eklundjon/ha-birdweather/blob/main/blueprints/automation/birdweather/play_call_on_media_player.yaml
+```
+
+The three notification blueprints send a mobile push (with the bird's photo) and differ only in trigger; the new-species one adds eBird/Wikipedia tap-through buttons and the lifetime count, and the unusual-visitor one attaches the call recording when audio is enabled. The fourth plays a detection's call on a media player. Since every `birdweather_event` carries the same fields, treat them as recipes and mix in whatever you want.
+
+> **Audio note.** `audio_url` is BirdWeather's soundscape clip (FLAC) and is only present when audio is enabled in the options *and* the station has a recording for the detection (a station with audio sharing off produces silent clips). FLAC may not play in iOS notification attachments or on every media player.
 
 ## Options
 

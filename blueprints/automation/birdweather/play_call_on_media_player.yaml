@@ -1,0 +1,67 @@
+blueprint:
+  name: BirdWeather — Play the call on a media player
+  description: >
+    When a chosen BirdWeather event fires, play that detection's call recording
+    on a media player (a speaker, display, etc.). Demonstrates the event's
+    `audio_url` field — the BirdWeather soundscape clip for the detection.
+    Requires audio to be enabled in the integration's options (and the station to
+    have a soundscape for the detection); the chosen media player must be able to
+    reach the BirdWeather clip URL and play FLAC. If no recording is available
+    the automation does nothing.
+  domain: automation
+  source_url: https://github.com/eklundjon/ha-birdweather/blob/main/blueprints/automation/birdweather/play_call_on_media_player.yaml
+  author: ha-birdweather
+  input:
+    birdweather_device:
+      name: BirdWeather station
+      description: The BirdWeather station whose detections should play.
+      selector:
+        device:
+          filter:
+            integration: birdweather
+    event_type:
+      name: Trigger on
+      description: >
+        Which BirdWeather detection event should play the call. The same
+        `audio_url` field is on every event, so any of these works.
+      default: watched_species
+      selector:
+        select:
+          options:
+            - label: New species
+              value: new_species
+            - label: Unusual visitor
+              value: unusual_visitor
+            - label: Watched species
+              value: watched_species
+    media_player:
+      name: Media player
+      description: Where to play the recording (a speaker, display, etc.).
+      selector:
+        entity:
+          filter:
+            domain: media_player
+
+triggers:
+  - trigger: device
+    domain: birdweather
+    device_id: !input birdweather_device
+    type: !input event_type
+
+variables:
+  audio_url: "{{ trigger.event.data.audio_url }}"
+
+conditions:
+  # Only proceed when the detection actually has a soundscape (audio enabled +
+  # a clip available). audio_url is null/"None"/"" otherwise.
+  - condition: template
+    value_template: "{{ audio_url not in [none, '', 'None'] }}"
+
+actions:
+  - alias: Play the detection's call on the chosen media player
+    action: media_player.play_media
+    target:
+      entity_id: !input media_player
+    data:
+      media_content_id: "{{ audio_url }}"
+      media_content_type: music
