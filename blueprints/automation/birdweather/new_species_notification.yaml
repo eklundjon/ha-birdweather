@@ -1,0 +1,71 @@
+blueprint:
+  name: BirdWeather — New species notification
+  description: >
+    Send a mobile push notification (with the bird's photo) the first time
+    your BirdWeather station ever hears a given species. Fires off the
+    integration's `new_species` device trigger, so it only alerts on genuine
+    lifetime firsts — not on a fresh install bootstrapping its history. The
+    notification includes the running lifetime species count and tap-through
+    buttons to the bird's eBird and Wikipedia pages.
+  domain: automation
+  source_url: https://github.com/eklundjon/ha-birdweather/blob/main/blueprints/automation/birdweather/new_species_notification.yaml
+  author: ha-birdweather
+  input:
+    birdweather_device:
+      name: BirdWeather station
+      description: The BirdWeather station to watch for new species.
+      selector:
+        device:
+          filter:
+            integration: birdweather
+    notify_device:
+      name: Device to notify
+      description: >
+        Device running the official Home Assistant app. It will receive the
+        push notification, including the bird's photo when one is available.
+      selector:
+        device:
+          filter:
+            integration: mobile_app
+    notification_title:
+      name: Notification title
+      description: Title of the push notification.
+      default: New bird at the BirdWeather station! 🐦
+    notification_message:
+      name: Notification message
+      description: >
+        Body of the push notification. Available: {{ species }} (common name),
+        {{ device_name }} (the station), and {{ lifetime_species_count }} (total
+        distinct species ever heard here, including this one).
+      default: "First-ever detection of {{ species }} at {{ device_name }} — species #{{ lifetime_species_count }} at this station! 🎉"
+
+triggers:
+  - trigger: device
+    domain: birdweather
+    device_id: !input birdweather_device
+    type: new_species
+
+variables:
+  species: "{{ trigger.event.data.species }}"
+  scientific_name: "{{ trigger.event.data.scientific_name }}"
+  device_name: "{{ trigger.event.data.device_name }}"
+  image_url: "{{ trigger.event.data.image_url }}"
+  ebird_url: "{{ trigger.event.data.ebird_url }}"
+  wikipedia_url: "{{ trigger.event.data.wikipedia_url }}"
+  lifetime_species_count: "{{ trigger.event.data.lifetime_species_count }}"
+
+actions:
+  - alias: Send the new-species notification
+    domain: mobile_app
+    type: notify
+    device_id: !input notify_device
+    title: !input notification_title
+    message: !input notification_message
+    # The bird's photo (when available) plus tap-through action buttons to
+    # eBird / Wikipedia, built from the event's reference-link fields.
+    data: >
+      {% set actions = [] %}
+      {% if ebird_url %}{% set actions = actions + [{'action': 'URI', 'title': 'Open in eBird', 'uri': ebird_url}] %}{% endif %}
+      {% if wikipedia_url %}{% set actions = actions + [{'action': 'URI', 'title': 'Wikipedia', 'uri': wikipedia_url}] %}{% endif %}
+      {{ {'image': image_url, 'attachment': {'url': image_url}, 'actions': actions}
+         if image_url else {'actions': actions} }}

@@ -1,0 +1,61 @@
+blueprint:
+  name: BirdWeather — Watched species notification
+  description: >
+    Send a mobile push notification (with the bird's photo) when one of your
+    watch-list species is heard at your BirdWeather station. Fires off the
+    integration's `watched_species` device trigger, so it alerts only on species
+    you've explicitly chosen to watch — set the watch-list per-station in the
+    integration's options (Settings → Devices & Services → BirdWeather →
+    Configure).
+  domain: automation
+  source_url: https://github.com/eklundjon/ha-birdweather/blob/main/blueprints/automation/birdweather/watched_species_notification.yaml
+  author: ha-birdweather
+  input:
+    birdweather_device:
+      name: BirdWeather station
+      description: The BirdWeather station to watch for your chosen species.
+      selector:
+        device:
+          filter:
+            integration: birdweather
+    notify_device:
+      name: Device to notify
+      description: >
+        Device running the official Home Assistant app. It will receive the
+        push notification, including the bird's photo when one is available.
+      selector:
+        device:
+          filter:
+            integration: mobile_app
+    notification_title:
+      name: Notification title
+      description: Title of the push notification.
+      default: A watched bird is here! 🐦
+    notification_message:
+      name: Notification message
+      description: >
+        Body of the push notification. The bird's common name is available as
+        {{ species }} and the station name as {{ device_name }}.
+      default: "{{ species }} — one of your watched species — was just heard at {{ device_name }}."
+
+triggers:
+  - trigger: device
+    domain: birdweather
+    device_id: !input birdweather_device
+    type: watched_species
+
+variables:
+  species: "{{ trigger.event.data.species }}"
+  scientific_name: "{{ trigger.event.data.scientific_name }}"
+  device_name: "{{ trigger.event.data.device_name }}"
+  image_url: "{{ trigger.event.data.image_url }}"
+
+actions:
+  - alias: Send the watched-species notification
+    domain: mobile_app
+    type: notify
+    device_id: !input notify_device
+    title: !input notification_title
+    message: !input notification_message
+    data: >
+      {{ {'image': image_url, 'attachment': {'url': image_url}} if image_url else {} }}

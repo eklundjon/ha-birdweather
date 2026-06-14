@@ -1,0 +1,72 @@
+blueprint:
+  name: BirdWeather — Unusual visitor notification
+  description: >
+    Send a mobile push notification when a species your BirdWeather station
+    already knows returns after a long absence. Fires off the integration's
+    `unusual_visitor` device trigger; how long a bird must have gone unheard to
+    count is set per-station in the integration's options (default 30 days). When
+    audio is enabled and the detection has a soundscape, the recording is
+    attached so you can play the bird's call (attachment playback is
+    platform-dependent — see docs); otherwise the bird's photo is attached.
+  domain: automation
+  source_url: https://github.com/eklundjon/ha-birdweather/blob/main/blueprints/automation/birdweather/unusual_visitor_notification.yaml
+  author: ha-birdweather
+  input:
+    birdweather_device:
+      name: BirdWeather station
+      description: The BirdWeather station to watch for returning visitors.
+      selector:
+        device:
+          filter:
+            integration: birdweather
+    notify_device:
+      name: Device to notify
+      description: >
+        Device running the official Home Assistant app. It will receive the
+        push notification, including the bird's photo when one is available.
+      selector:
+        device:
+          filter:
+            integration: mobile_app
+    notification_title:
+      name: Notification title
+      description: Title of the push notification.
+      default: An unusual visitor returned! 🐦
+    notification_message:
+      name: Notification message
+      description: >
+        Body of the push notification. Available: {{ species }} (common name),
+        {{ device_name }} (the station), and {{ days_absent }} (days since the
+        previous sighting).
+      default: "{{ species }} is back at {{ device_name }} after {{ days_absent }} days away."
+
+triggers:
+  - trigger: device
+    domain: birdweather
+    device_id: !input birdweather_device
+    type: unusual_visitor
+
+variables:
+  species: "{{ trigger.event.data.species }}"
+  scientific_name: "{{ trigger.event.data.scientific_name }}"
+  device_name: "{{ trigger.event.data.device_name }}"
+  image_url: "{{ trigger.event.data.image_url }}"
+  audio_url: "{{ trigger.event.data.audio_url }}"
+  days_absent: "{{ trigger.event.data.days_absent }}"
+
+actions:
+  - alias: Send the unusual-visitor notification
+    domain: mobile_app
+    type: notify
+    device_id: !input notify_device
+    title: !input notification_title
+    message: !input notification_message
+    # When audio is enabled and the detection has a soundscape, attach the clip
+    # (audio_url) and keep the photo via `image`; otherwise fall back to a photo
+    # attachment. The clip is a BirdWeather soundscape URL (FLAC); attachment
+    # playback is platform-dependent — iOS supports a limited set of formats and
+    # may not play FLAC; see docs.
+    data: >
+      {{ {'image': image_url, 'attachment': {'url': audio_url, 'content-type': 'audio/flac'}}
+         if audio_url else
+         ({'image': image_url, 'attachment': {'url': image_url}} if image_url else {}) }}
