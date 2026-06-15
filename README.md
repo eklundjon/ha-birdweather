@@ -136,6 +136,13 @@ wrong, it's worth reporting to BirdWeather.
 BirdWeather has no image for that species yet, or it failed to load; it appears
 once a photo is available and the next poll caches it.
 
+**"Notable species" went to *unknown* but "Last detection" still shows a bird.**
+That's intentional. *Last detection* is "the last bird heard, no matter how long
+ago" — it's backed by a persisted buffer, so it survives restarts and outages.
+*Notable species* means "most notable in the last 24 hours," so it drains to
+*unknown* when the station has reported nothing for 24 h — a useful signal that
+the station has gone quiet or offline.
+
 **A card looks stale right after updating the integration.**
 Hard-refresh the dashboard — the card JavaScript is cached by your browser and
 only re-fetched when the integration version changes.

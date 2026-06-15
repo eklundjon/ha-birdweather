@@ -25,7 +25,7 @@ _STORE_ATTRS = (
     "_links_store",
     "_yearly_store",
     "_seven_day_store",
-    "_sticky_store",
+    "_events_store",
 )
 
 
@@ -82,8 +82,7 @@ def make_coordinator(
     c._diel_station = []
     c._diel_fetched_date = None
     c._stats_imported_date = None
-    c._last_detected = None
-    c._last_notable = None
+    c._event_buffer = []
     c._seen_species = {}
     c._sp_codes = {}
     c._sci_names = {}

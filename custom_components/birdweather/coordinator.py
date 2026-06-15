@@ -68,7 +68,7 @@ _STORE_SUFFIXES = (
     "links",
     "yearly",
     "seven_day",
-    "sticky",
+    "recent_events",
 )
 
 type BirdWeatherConfigEntry = ConfigEntry[BirdWeatherCoordinator]
@@ -120,9 +120,14 @@ class BirdWeatherCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         # Long-term statistics backfill — imported once per calendar day.
         self._stats_imported_date: date | None = None
 
-        # Sticky records — set on first detection, never cleared; persisted.
-        self._last_detected: dict[str, Any] | None = None
-        self._last_notable: dict[str, Any] | None = None
+        # Rolling buffer of the most-recent detection EVENTS (newest-first,
+        # capped at LAST_DETECTION_EVENT_LIMIT), persisted. This backs
+        # last_detection: "the last detection" is the last detection no matter
+        # how old, so it must NOT drain when the live feed empties (station
+        # offline). The buffer survives restarts and outages; its head is the
+        # last_detection state. notable_species is deliberately NOT sticky — it's
+        # "notable observed in the last 24 h", so it drains with its window.
+        self._event_buffer: list[dict[str, Any]] = []
 
         # Persistent stores
         self._store           = Store(hass, _STORE_VERSION, f"{DOMAIN}.{station_id}.seen_species")
@@ -134,7 +139,7 @@ class BirdWeatherCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._links_store      = Store(hass, _STORE_VERSION, f"{DOMAIN}.{station_id}.links")
         self._yearly_store     = Store(hass, _STORE_VERSION, f"{DOMAIN}.{station_id}.yearly")
         self._seven_day_store  = Store(hass, _STORE_VERSION, f"{DOMAIN}.{station_id}.seven_day")
-        self._sticky_store     = Store(hass, _STORE_VERSION, f"{DOMAIN}.{station_id}.sticky")
+        self._events_store     = Store(hass, _STORE_VERSION, f"{DOMAIN}.{station_id}.recent_events")
 
         # In-memory store state
         self._seen_species: dict[str, str] = {}       # species → first_seen ISO
@@ -159,6 +164,40 @@ class BirdWeatherCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     async def _async_setup(self) -> None:
         """One-time setup before the first refresh: rehydrate persisted stores."""
         await self._load_stores()
+
+    def _merge_event_buffer(self, poll_events: list[dict[str, Any]]) -> bool:
+        """Merge this poll's events into the rolling last-N buffer that backs
+        last_detection. De-duped by (sp_code, last_seen), newest-first, capped at
+        LAST_DETECTION_EVENT_LIMIT. Returns whether the buffer changed (→ persist).
+        """
+        existing = {(e.get("sp_code"), e.get("last_seen")) for e in self._event_buffer}
+        added = False
+        for ev in poll_events:
+            key = (ev.get("sp_code"), ev.get("last_seen"))
+            if ev.get("last_seen") and key not in existing:
+                self._event_buffer.append(dict(ev))
+                existing.add(key)
+                added = True
+        if added:
+            self._event_buffer.sort(key=lambda e: e.get("last_seen") or "", reverse=True)
+            del self._event_buffer[LAST_DETECTION_EVENT_LIMIT:]
+        return added
+
+    def _buffer_view(self, audio_enabled: bool) -> list[dict[str, Any]]:
+        """Display copies of the event buffer for last_detection: fresh image_url
+        (a species' photo may have been cached after the event was buffered) and
+        current rarity scores, without mutating the stored buffer. audio_url is
+        gated on the current audio_enabled option so toggling audio off hides the
+        play button; _with_links (applied by the caller) stamps reference links."""
+        view = [dict(e) for e in self._event_buffer]
+        for e in view:
+            img = self._image_urls.get(e.get("sp_code"))
+            if img:
+                e["image_url"] = img
+            if not audio_enabled:
+                e["audio_url"] = None
+        _apply_rarity_scores(view, self._baseline_ranks, self._baseline_species_count)
+        return view
 
     @staticmethod
     async def async_remove_stores(hass: HomeAssistant, station_id: str) -> None:
@@ -360,46 +399,21 @@ class BirdWeatherCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
         seven_day_rare = await self._update_seven_day(daily_count, today)
 
-        sticky_dirty = False
-        if detections:
-            if not self._last_detected or detections[0].get("species") != self._last_detected.get("species"):
-                sticky_dirty = True
-            self._last_detected = detections[0]
-
+        # Notability: weighted blend of rarity + recency over the 24h list.
+        # notable is deliberately NOT sticky — it drains with its 24h window, so
+        # notable_detection is the current top, or None when the window is empty
+        # (station quiet/offline) → sensor "unknown". (#62)
         rarity_weight = self.config_entry.options.get(
             CONF_NOTABLE_RARITY_WEIGHT, DEFAULT_NOTABLE_RARITY_WEIGHT
         ) / 100.0
         _apply_notability_scores(daily_count, now, NOTABILITY_WINDOW_HOURS, rarity_weight)
         notable = sorted(daily_count, key=lambda x: x.get("notability_score", 0), reverse=True)
-        if notable:
-            if not self._last_notable or notable[0].get("species") != self._last_notable.get("species"):
-                sticky_dirty = True
-            self._last_notable = notable[0]
 
-        if sticky_dirty:
-            await self._sticky_store.async_save(
-                {"last_detected": self._last_detected, "last_notable": self._last_notable}
-            )
-
-        # Sticky-record bootstrap (quiet-hour fresh install / restart w/o store).
-        if (self._last_detected is None or self._last_notable is None) and daily_count:
-            bootstrap_dirty = False
-            if self._last_detected is None:
-                by_recency = sorted(daily_count, key=lambda x: x.get("last_seen") or "", reverse=True)
-                if by_recency:
-                    self._last_detected = by_recency[0]
-                    bootstrap_dirty = True
-            if self._last_notable is None:
-                by_rarity = sorted(daily_count, key=lambda x: x.get("rarity_score", 0), reverse=True)
-                if by_rarity:
-                    self._last_notable = by_rarity[0]
-                    bootstrap_dirty = True
-            if bootstrap_dirty:
-                await self._sticky_store.async_save(
-                    {"last_detected": self._last_detected, "last_notable": self._last_notable}
-                )
-
-        recent_events = _build_recent_events(
+        # last_detection is backed by a persisted rolling buffer of recent EVENTS
+        # (per-event, newest-first, capped), NOT the live feed — so "the last
+        # detection" persists across restarts and outages (#62). Build this
+        # poll's events, merge the new ones in, and persist when it changes.
+        poll_events = _build_recent_events(
             daily_raw,
             self._baseline_ranks,
             self._baseline_species_count,
@@ -407,6 +421,8 @@ class BirdWeatherCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             LAST_DETECTION_EVENT_LIMIT,
             audio_enabled,
         )
+        if self._merge_event_buffer(poll_events):
+            await self._events_store.async_save(self._event_buffer)
 
         self._fire_detection_events(detections, newly_seen, prior_last_seen)
 
@@ -468,13 +484,19 @@ class BirdWeatherCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             await self._image_attr_store.async_save(self._image_attr)
         _apply_rarity_scores(today_top, self._baseline_ranks, self._baseline_species_count)
 
+        # last_detection's head + list come from the persisted event buffer (not
+        # the live feed), so they never drain on an outage (#62). notable stays
+        # live — head + list drain to None / [] with the 24h window.
+        recent_events_out = _ranked(self._with_links(self._buffer_view(audio_enabled)))
+        notable_out = _ranked(self._with_links(notable))
+
         # Stamp reference-link URLs (eBird/Wikipedia/All About Birds) onto every
         # card-facing list, so the cards render links without constructing URLs.
         return {
             "recent_detections": _ranked(self._with_links(detections)),
-            "last_detection": self._last_detected,
-            "recent_events": _ranked(self._with_links(recent_events)),
-            "notable_detection": self._last_notable,
+            "last_detection": recent_events_out[0] if recent_events_out else None,
+            "recent_events": recent_events_out,
+            "notable_detection": notable_out[0] if notable_out else None,
             # The trailing-24h detection list still feeds the 7-day rarest
             # rollup, notability, and the extended-silence sensor. Distinct key
             # from the `daily_count` *sensor* (which shows today_total) — the
@@ -486,7 +508,7 @@ class BirdWeatherCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             "typical_daily_count": overview.get("typical_daily"),
             "new_species_window": overview.get("new_species_window"),
             "history_earliest": overview.get("history_earliest"),
-            "notable_detections": _ranked(self._with_links(notable)),
+            "notable_detections": notable_out,
             "new_detections": _ranked(self._with_links(self._build_new_species_history())),
             "new_detection": self._build_last_new_species(),
             "lifetime_species_count": (
@@ -623,7 +645,7 @@ class BirdWeatherCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         links     = await self._links_store.async_load()
         yearly    = await self._yearly_store.async_load()
         seven_day = await self._seven_day_store.async_load()
-        sticky    = await self._sticky_store.async_load()
+        events    = await self._events_store.async_load()
 
         self._seen_species   = seen      if isinstance(seen, dict)      else {}
         self._sp_codes       = sp_codes  if isinstance(sp_codes, dict)  else {}
@@ -635,13 +657,22 @@ class BirdWeatherCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._baseline_items   = yearly    if isinstance(yearly, list)    else []
         self._seven_day_data = seven_day if isinstance(seven_day, dict) else {}
 
-        if isinstance(sticky, dict):
-            ld = sticky.get("last_detected")
-            ln = sticky.get("last_notable")
-            if isinstance(ld, dict):
-                self._last_detected = ld
-            if isinstance(ln, dict):
-                self._last_notable = ln
+        # Rehydrate the rolling event buffer so last_detection shows its last
+        # value immediately after a restart (and survives an outage) instead of
+        # "unknown" until the next live detection. Keep only well-formed records,
+        # newest-first, capped — a corrupt/hand-edited store can't crash us.
+        if isinstance(events, list):
+            self._event_buffer = [
+                e for e in events if isinstance(e, dict) and e.get("last_seen")
+            ]
+            self._event_buffer.sort(key=lambda e: e.get("last_seen") or "", reverse=True)
+            del self._event_buffer[LAST_DETECTION_EVENT_LIMIT:]
+
+        # One-time cleanup of the legacy .sticky store (the rolling event buffer +
+        # live notable replace it — #62). async_remove no-ops if already gone.
+        await Store(
+            self.hass, _STORE_VERSION, f"{DOMAIN}.{self.station_id}.sticky"
+        ).async_remove()
 
         self._baseline_ranks = {
             item["species"]: item["rank"]

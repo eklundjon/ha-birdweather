@@ -97,6 +97,38 @@ async def test_last_detection_is_most_recent() -> None:
     assert data["last_detection"]["species"] == "American Robin"
 
 
+async def test_last_detection_persists_when_feed_empties() -> None:
+    """#62: last_detection is backed by a persisted buffer, so it survives an
+    outage (empty feed) instead of draining; notable drains with its window."""
+    coord = make_coordinator(client=make_client(baseline=_BASELINE, detections=_detections()))
+    data = await coord._async_update_data()
+    assert data["last_detection"]["species"] == "American Robin"
+    assert data["notable_detection"] is not None
+
+    # Next poll: the station has gone silent (feed empty), baseline still cached.
+    coord._client = make_client(baseline=_BASELINE, detections={"detections": []})
+    data = await coord._async_update_data()
+    # last_detection persists from the buffer; recent feed + notable drain.
+    assert data["last_detection"]["species"] == "American Robin"
+    assert data["recent_events"]  # buffer non-empty
+    assert data["recent_detections"] == []
+    assert data["notable_detection"] is None
+    assert data["notable_detections"] == []
+
+
+async def test_event_buffer_dedups_and_persists_across_polls() -> None:
+    dets = _detections()  # one dict, identical timestamps across both polls
+    coord = make_coordinator(client=make_client(baseline=_BASELINE, detections=dets))
+    await coord._async_update_data()
+    first = len(coord._event_buffer)
+    assert first == 3  # robin, cardinal, owl (one event each)
+
+    # Re-poll the identical feed: no new (sp_code, last_seen) keys → no growth.
+    coord._client = make_client(baseline=_BASELINE, detections=dets)
+    await coord._async_update_data()
+    assert len(coord._event_buffer) == first
+
+
 async def test_seen_species_bootstrap_from_daily_window() -> None:
     client = make_client(baseline=_BASELINE, detections=_detections())
     coord = make_coordinator(client=client)

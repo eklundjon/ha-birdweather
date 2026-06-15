@@ -163,14 +163,15 @@ async def test_first_poll_is_silent(hass: HomeAssistant) -> None:
 # ---- _load_stores ---------------------------------------------------------- #
 
 
-async def test_load_stores_rehydrates_state() -> None:
-    coord = make_coordinator()
+async def test_load_stores_rehydrates_state(hass: HomeAssistant) -> None:
+    coord = make_coordinator(hass=hass)
     coord._store.async_load = _const({"American Robin": "2024-01-01T00:00:00Z"})
     coord._yearly_store.async_load = _const(
         [{"species": "American Robin", "rank": 1}, {"species": "Barred Owl", "rank": 2}]
     )
-    coord._sticky_store.async_load = _const(
-        {"last_detected": {"species": "Barred Owl"}, "last_notable": {"species": "Barred Owl"}}
+    # The event buffer that backs last_detection rehydrates from .recent_events.
+    coord._events_store.async_load = _const(
+        [{"species": "Barred Owl", "sp_code": "brdowl", "last_seen": "2024-01-01T00:00:00Z"}]
     )
 
     await coord._load_stores()
@@ -179,21 +180,23 @@ async def test_load_stores_rehydrates_state() -> None:
     # Baseline ranks are rebuilt from the persisted yearly items.
     assert coord._baseline_ranks == {"American Robin": 1, "Barred Owl": 2}
     assert coord._baseline_species_count == 2
-    assert coord._last_detected == {"species": "Barred Owl"}
+    assert [e["species"] for e in coord._event_buffer] == ["Barred Owl"]
 
 
-async def test_load_stores_tolerates_garbage() -> None:
-    coord = make_coordinator()
+async def test_load_stores_tolerates_garbage(hass: HomeAssistant) -> None:
+    coord = make_coordinator(hass=hass)
     coord._store.async_load = _const("not a dict")
     coord._yearly_store.async_load = _const({"not": "a list"})
+    coord._events_store.async_load = _const("not a list")
     await coord._load_stores()
     assert coord._seen_species == {}
     assert coord._baseline_items == []
+    assert coord._event_buffer == []
 
 
-async def test_async_setup_rehydrates_stores() -> None:
+async def test_async_setup_rehydrates_stores(hass: HomeAssistant) -> None:
     # _async_setup is the one-time hook that loads stores before the first poll.
-    coord = make_coordinator()
+    coord = make_coordinator(hass=hass)
     coord._store.async_load = _const({"American Robin": "2024-01-01T00:00:00Z"})
     await coord._async_setup()
     assert coord._seen_species == {"American Robin": "2024-01-01T00:00:00Z"}
