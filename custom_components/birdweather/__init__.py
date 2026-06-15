@@ -7,6 +7,7 @@ from homeassistant.components.http import StaticPathConfig
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import config_validation as cv
+from homeassistant.helpers import device_registry as dr
 from homeassistant.loader import async_get_integration
 
 from .const import CONF_STATION_ID, DOMAIN
@@ -42,6 +43,19 @@ async def async_setup_entry(hass: HomeAssistant, entry: BirdWeatherConfigEntry) 
     entry.runtime_data = coordinator
     entry.async_on_unload(entry.add_update_listener(_async_options_updated))
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+
+    # One-time: clear a serial_number stamped on the device by older versions.
+    # A station ID isn't a serial number, and HA labels it "Serial number" on the
+    # device page. HA preserves device fields an integration stops supplying, so
+    # dropping it from DeviceInfo doesn't clear an already-registered device —
+    # do it explicitly here. Idempotent (no-op once cleared).
+    device_reg = dr.async_get(hass)
+    device = device_reg.async_get_device(
+        identifiers={(DOMAIN, entry.data[CONF_STATION_ID])}
+    )
+    if device is not None and device.serial_number is not None:
+        device_reg.async_update_device(device.id, serial_number=None)
+
     return True
 
 
