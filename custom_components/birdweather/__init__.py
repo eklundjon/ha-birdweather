@@ -4,6 +4,7 @@ from pathlib import Path
 
 from homeassistant.components.frontend import add_extra_js_url
 from homeassistant.components.http import StaticPathConfig
+from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import config_validation as cv
 from homeassistant.loader import async_get_integration
@@ -13,7 +14,7 @@ from .coordinator import BirdWeatherConfigEntry, BirdWeatherCoordinator
 
 CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
 
-PLATFORMS = ["sensor", "binary_sensor"]
+PLATFORMS = [Platform.SENSOR, Platform.BINARY_SENSOR]
 
 _CARDS = [
     ("/birdweather/birdweather-bird-card.js",      "www/birdweather-bird-card.js"),

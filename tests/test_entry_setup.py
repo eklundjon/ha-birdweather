@@ -12,6 +12,7 @@ from unittest.mock import patch
 
 from homeassistant.config_entries import ConfigEntryState
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import entity_registry as er
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
@@ -120,6 +121,13 @@ async def test_entry_setup_creates_entities_with_states(hass: HomeAssistant) -> 
     assert _state("history_start") == "2024-01-01T13:30:00+00:00"
     # 24h list is non-empty → extended-silence problem sensor is off.
     assert _state("extended_silence") == "off"
+
+    # Both platforms share one device, carrying serial_number + configuration_url.
+    dev_reg = dr.async_get(hass)
+    device = dev_reg.async_get_device(identifiers={(DOMAIN, STATION_ID)})
+    assert device is not None
+    assert device.serial_number == STATION_ID
+    assert device.configuration_url == f"https://app.birdweather.com/stations/{STATION_ID}"
 
 
 async def test_entry_setup_creates_puc_hardware_entities(hass: HomeAssistant) -> None:
