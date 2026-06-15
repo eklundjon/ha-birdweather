@@ -122,6 +122,19 @@ After setup, open the integration's **Configure** dialog to tune:
   - **Rarity baseline window** (1–24 months, default 1) — trailing months of BirdWeather topSpecies counts used to rank rarity.
   - **New-species momentum window** (7–365 days, default 30) — the window behind the "New species" count sensor.
 
+## Documentation
+
+| Topic | Doc |
+|---|---|
+| Full sensor reference, the `detections` attribute contract, rarity scoring, persistent state stores | [docs/sensors.md](docs/sensors.md) |
+| Both custom cards, YAML examples, tap actions, full dashboard example | [docs/cards.md](docs/cards.md) |
+| Device triggers, the `birdweather_event` payload, push-notification blueprints | [docs/automations.md](docs/automations.md) |
+| Tuning windows & poll cadence (Advanced options), confidence filters, changing the station | [docs/advanced.md](docs/advanced.md) |
+| Config-flow errors, first-install behaviour, offline sensors, card-cache issues, diagnostics | [docs/troubleshooting.md](docs/troubleshooting.md) |
+| BirdWeather GraphQL queries, polling cadence, failure modes | [docs/api.md](docs/api.md) |
+| Module map, data flow, persistence, lifecycle, custom-card registration | [docs/architecture.md](docs/architecture.md) |
+| Local dev setup, running the test suite, the CI matrix, the refactor smoke harness | [docs/contributing.md](docs/contributing.md) |
+
 ## Troubleshooting
 
 **A bird photo looks oddly cropped (a beak, tail, or head cut off).**
