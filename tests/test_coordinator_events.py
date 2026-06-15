@@ -164,7 +164,7 @@ async def test_first_poll_is_silent(hass: HomeAssistant) -> None:
 
 
 async def test_load_stores_rehydrates_state() -> None:
-    coord = make_coordinator(_stores_loaded=False)
+    coord = make_coordinator()
     coord._store.async_load = _const({"American Robin": "2024-01-01T00:00:00Z"})
     coord._yearly_store.async_load = _const(
         [{"species": "American Robin", "rank": 1}, {"species": "Barred Owl", "rank": 2}]
@@ -175,7 +175,6 @@ async def test_load_stores_rehydrates_state() -> None:
 
     await coord._load_stores()
 
-    assert coord._stores_loaded is True
     assert coord._seen_species == {"American Robin": "2024-01-01T00:00:00Z"}
     # Baseline ranks are rebuilt from the persisted yearly items.
     assert coord._baseline_ranks == {"American Robin": 1, "Barred Owl": 2}
@@ -184,12 +183,20 @@ async def test_load_stores_rehydrates_state() -> None:
 
 
 async def test_load_stores_tolerates_garbage() -> None:
-    coord = make_coordinator(_stores_loaded=False)
+    coord = make_coordinator()
     coord._store.async_load = _const("not a dict")
     coord._yearly_store.async_load = _const({"not": "a list"})
     await coord._load_stores()
     assert coord._seen_species == {}
     assert coord._baseline_items == []
+
+
+async def test_async_setup_rehydrates_stores() -> None:
+    # _async_setup is the one-time hook that loads stores before the first poll.
+    coord = make_coordinator()
+    coord._store.async_load = _const({"American Robin": "2024-01-01T00:00:00Z"})
+    await coord._async_setup()
+    assert coord._seen_species == {"American Robin": "2024-01-01T00:00:00Z"}
 
 
 def _const(value):

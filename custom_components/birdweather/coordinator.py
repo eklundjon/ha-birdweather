@@ -133,7 +133,6 @@ class BirdWeatherCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._links_cache: dict[str, dict[str, Any]] = {}
         self._baseline_items: list[dict[str, Any]] = []
         self._seven_day_data: dict[str, list] = {}
-        self._stores_loaded: bool = False
 
         # unusual_visitor edge detection (None until first poll baselines).
         self._prev_recent_species: set[str] | None = None
@@ -142,9 +141,11 @@ class BirdWeatherCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     # DataUpdateCoordinator interface
     # ------------------------------------------------------------------
 
+    async def _async_setup(self) -> None:
+        """One-time setup before the first refresh: rehydrate persisted stores."""
+        await self._load_stores()
+
     async def _async_update_data(self) -> dict[str, Any]:
-        if not self._stores_loaded:
-            await self._load_stores()
 
         # UTC-anchored day boundaries (matches the pipeline's assumptions).
         today = datetime.now(UTC).date()
@@ -622,8 +623,6 @@ class BirdWeatherCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             if isinstance(item, dict) and item.get("species") and item.get("rank")
         }
         self._baseline_species_count = len(self._baseline_ranks)
-
-        self._stores_loaded = True
 
     async def _update_seven_day(
         self, detections: list[dict[str, Any]], today: date

@@ -94,7 +94,6 @@ def make_coordinator(
     c._baseline_items = []
     c._seven_day_data = {}
     c._prev_recent_species = None
-    c._stores_loaded = True  # skip _load_stores
     for attr in _STORE_ATTRS:
         setattr(c, attr, FakeStore())
     for key, value in attrs.items():
