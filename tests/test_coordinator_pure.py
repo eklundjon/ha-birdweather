@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 
-from custom_components.birdweather.coordinator import (
+from custom_components.birdweather.normalize import (
     _allaboutbirds_url,
     _apply_notability_scores,
     _apply_rarity_scores,
