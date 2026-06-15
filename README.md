@@ -140,6 +140,12 @@ once a photo is available and the next poll caches it.
 Hard-refresh the dashboard — the card JavaScript is cached by your browser and
 only re-fetched when the integration version changes.
 
+**Filing a bug report.**
+Open the BirdWeather device page and use **⋮ → Download diagnostics** to attach a
+redacted snapshot of the integration's state (the station id and name are
+redacted, so it's safe to share). It includes the latest poll's data and a short
+coordinator summary.
+
 ## Attribution & data licensing
 
 This integration surfaces data from the **BirdWeather** public API — detections,
