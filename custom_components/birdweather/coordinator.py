@@ -56,6 +56,21 @@ _LOGGER = logging.getLogger(__name__)
 
 _STORE_VERSION = 1
 
+# Per-station .storage suffixes — the full set, removed when the entry is removed
+# (see async_remove_stores). Keep in sync with the Store(...) creation in __init__.
+_STORE_SUFFIXES = (
+    "seen_species",
+    "sp_codes",
+    "sci_names",
+    "last_seen",
+    "image_urls",
+    "image_attr",
+    "links",
+    "yearly",
+    "seven_day",
+    "sticky",
+)
+
 type BirdWeatherConfigEntry = ConfigEntry[BirdWeatherCoordinator]
 
 
@@ -144,6 +159,17 @@ class BirdWeatherCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     async def _async_setup(self) -> None:
         """One-time setup before the first refresh: rehydrate persisted stores."""
         await self._load_stores()
+
+    @staticmethod
+    async def async_remove_stores(hass: HomeAssistant, station_id: str) -> None:
+        """Delete this station's persistent .storage files.
+
+        Called from async_remove_entry when the integration entry is removed.
+        Store.async_remove() no-ops if a file is already gone."""
+        for suffix in _STORE_SUFFIXES:
+            await Store(
+                hass, _STORE_VERSION, f"{DOMAIN}.{station_id}.{suffix}"
+            ).async_remove()
 
     async def _async_update_data(self) -> dict[str, Any]:
 

@@ -153,3 +153,16 @@ async def test_unload_entry(hass: HomeAssistant) -> None:
     assert await hass.config_entries.async_unload(entry.entry_id)
     await hass.async_block_till_done()
     assert entry.state is ConfigEntryState.NOT_LOADED
+
+
+async def test_remove_entry_cleans_storage(hass: HomeAssistant, hass_storage) -> None:
+    # PHACC mocks Store I/O in-memory via hass_storage, so assert on that.
+    entry = await _setup_entry(hass)
+    prefix = f"{DOMAIN}.{STATION_ID}."
+    assert [k for k in hass_storage if k.startswith(prefix)]  # stores persisted
+
+    await hass.config_entries.async_remove(entry.entry_id)
+    await hass.async_block_till_done()
+
+    # async_remove_entry deleted this station's per-station .storage files.
+    assert not [k for k in hass_storage if k.startswith(prefix)]
