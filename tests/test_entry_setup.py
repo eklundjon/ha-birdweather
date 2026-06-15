@@ -122,12 +122,46 @@ async def test_entry_setup_creates_entities_with_states(hass: HomeAssistant) -> 
     # 24h list is non-empty → extended-silence problem sensor is off.
     assert _state("extended_silence") == "off"
 
-    # Both platforms share one device, carrying serial_number + configuration_url.
+    # Both platforms share one device with a configuration_url back to the
+    # station page. No serial_number — a station ID isn't a serial number, and
+    # HA would label it "Serial number" on the device page.
     dev_reg = dr.async_get(hass)
     device = dev_reg.async_get_device(identifiers={(DOMAIN, STATION_ID)})
     assert device is not None
-    assert device.serial_number == STATION_ID
+    assert device.serial_number is None
     assert device.configuration_url == f"https://app.birdweather.com/stations/{STATION_ID}"
+
+
+async def test_setup_clears_legacy_serial_number(hass: HomeAssistant) -> None:
+    """A serial_number stamped by an older version is cleared on setup (HA keeps
+    device fields the integration stops supplying, so dropping it from DeviceInfo
+    isn't enough on its own)."""
+    entry = MockConfigEntry(
+        domain=DOMAIN, unique_id=STATION_ID,
+        data={CONF_STATION_ID: STATION_ID, CONF_STATION_NAME: "Backyard"}, options={},
+    )
+    entry.add_to_hass(hass)
+    dr.async_get(hass).async_get_or_create(
+        config_entry_id=entry.entry_id,
+        identifiers={(DOMAIN, STATION_ID)},
+        serial_number="2724",
+    )
+    client = make_client(
+        baseline=_BASELINE, detections=_DETECTIONS, overview=_OVERVIEW,
+        time_of_day={"by_species": {}, "station": [0] * 24}, sensors={},
+    )
+    with (
+        patch("custom_components.birdweather.async_setup", return_value=True),
+        patch(
+            "custom_components.birdweather.coordinator.BirdWeatherClient",
+            return_value=client,
+        ),
+    ):
+        await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done()
+
+    device = dr.async_get(hass).async_get_device(identifiers={(DOMAIN, STATION_ID)})
+    assert device.serial_number is None
 
 
 async def test_entry_setup_creates_puc_hardware_entities(hass: HomeAssistant) -> None:
