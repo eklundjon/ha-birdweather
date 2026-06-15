@@ -46,8 +46,7 @@ async def main(station_id: str) -> None:
         coord._diel_station = []
         coord._diel_fetched_date = None
         coord._stats_imported_date = None
-        coord._last_detected = None
-        coord._last_notable = None
+        coord._event_buffer = []
         coord._seen_species = {}
         coord._sp_codes = {}
         coord._sci_names = {}
@@ -62,7 +61,7 @@ async def main(station_id: str) -> None:
         for attr in (
             "_store", "_sp_codes_store", "_sci_names_store", "_last_seen_store",
             "_images_store", "_image_attr_store", "_links_store", "_yearly_store",
-            "_seven_day_store", "_sticky_store",
+            "_seven_day_store", "_events_store",
         ):
             setattr(coord, attr, _FakeStore())
 
