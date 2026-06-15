@@ -9,7 +9,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers import config_validation as cv
 from homeassistant.loader import async_get_integration
 
-from .const import DOMAIN
+from .const import CONF_STATION_ID, DOMAIN
 from .coordinator import BirdWeatherConfigEntry, BirdWeatherCoordinator
 
 CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
@@ -56,3 +56,15 @@ async def _async_options_updated(
 
 async def async_unload_entry(hass: HomeAssistant, entry: BirdWeatherConfigEntry) -> bool:
     return await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
+
+
+async def async_remove_entry(hass: HomeAssistant, entry: BirdWeatherConfigEntry) -> None:
+    """Clean up a removed station's persistent .storage files (10 per station).
+
+    All stores are namespaced by station id, so they're safe to delete regardless
+    of any other configured stations. (BirdWeather streams audio, so there's no
+    on-disk media cache to remove.)
+    """
+    await BirdWeatherCoordinator.async_remove_stores(
+        hass, entry.data[CONF_STATION_ID]
+    )
