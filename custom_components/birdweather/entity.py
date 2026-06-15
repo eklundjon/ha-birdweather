@@ -26,6 +26,8 @@ class BirdWeatherEntity(CoordinatorEntity[BirdWeatherCoordinator]):
             name=self.coordinator.device_name,
             manufacturer="BirdWeather",
             model="BirdWeather Station",
-            serial_number=self._station_id,
+            # No serial_number: a BirdWeather station ID isn't a serial number, and
+            # HA's device page labels that field "Serial number" (core frontend
+            # text we can't relabel). The ID stays reachable via configuration_url.
             configuration_url=f"https://app.birdweather.com/stations/{self._station_id}",
         )

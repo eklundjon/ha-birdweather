@@ -122,11 +122,13 @@ async def test_entry_setup_creates_entities_with_states(hass: HomeAssistant) -> 
     # 24h list is non-empty → extended-silence problem sensor is off.
     assert _state("extended_silence") == "off"
 
-    # Both platforms share one device, carrying serial_number + configuration_url.
+    # Both platforms share one device with a configuration_url back to the
+    # station page. No serial_number — a station ID isn't a serial number, and
+    # HA would label it "Serial number" on the device page.
     dev_reg = dr.async_get(hass)
     device = dev_reg.async_get_device(identifiers={(DOMAIN, STATION_ID)})
     assert device is not None
-    assert device.serial_number == STATION_ID
+    assert device.serial_number is None
     assert device.configuration_url == f"https://app.birdweather.com/stations/{STATION_ID}"
 
 
