@@ -72,20 +72,30 @@ _LOGGER = logging.getLogger(__name__)
 
 _STORE_VERSION = 1
 
-# Per-station .storage suffixes — the full set, removed when the entry is removed
+# Per-station .storage suffixes — the live set, removed when the entry is removed
 # (see async_remove_stores). Keep in sync with the Store(...) creation in __init__.
 _STORE_SUFFIXES = (
     "seen_species",
-    "sp_codes",
-    "sci_names",
     "last_seen",
-    "image_urls",
-    "image_attr",
-    "links",
     "yearly",
     "seven_day",
     "recent_events",
+    "species_meta",
 )
+
+# Legacy per-station stores from earlier versions: the five cold maps now folded
+# into species_meta, plus the old .sticky (now the event buffer + live notable).
+# Migrated/cleaned on load and also removed on entry removal.
+_LEGACY_STORE_SUFFIXES = (
+    "sp_codes",
+    "sci_names",
+    "image_urls",
+    "image_attr",
+    "links",
+    "sticky",
+)
+# Keys of the consolidated species_meta store, in (key, in-memory attr) form.
+_META_KEYS = ("sp_codes", "sci_names", "image_urls", "image_attr", "links")
 
 type BirdWeatherConfigEntry = ConfigEntry[BirdWeatherCoordinator]
 
@@ -147,15 +157,17 @@ class BirdWeatherCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
         # Persistent stores
         self._store           = Store(hass, _STORE_VERSION, f"{DOMAIN}.{station_id}.seen_species")
-        self._sp_codes_store  = Store(hass, _STORE_VERSION, f"{DOMAIN}.{station_id}.sp_codes")
-        self._sci_names_store  = Store(hass, _STORE_VERSION, f"{DOMAIN}.{station_id}.sci_names")
         self._last_seen_store  = Store(hass, _STORE_VERSION, f"{DOMAIN}.{station_id}.last_seen")
-        self._images_store     = Store(hass, _STORE_VERSION, f"{DOMAIN}.{station_id}.image_urls")
-        self._image_attr_store = Store(hass, _STORE_VERSION, f"{DOMAIN}.{station_id}.image_attr")
-        self._links_store      = Store(hass, _STORE_VERSION, f"{DOMAIN}.{station_id}.links")
         self._yearly_store     = Store(hass, _STORE_VERSION, f"{DOMAIN}.{station_id}.yearly")
         self._seven_day_store  = Store(hass, _STORE_VERSION, f"{DOMAIN}.{station_id}.seven_day")
         self._events_store     = Store(hass, _STORE_VERSION, f"{DOMAIN}.{station_id}.recent_events")
+        # The five cold per-species lookup maps (sp_codes, sci_names, image_urls,
+        # image_attr, links) change together (when a new species is first seen)
+        # and are static otherwise, so they share one store rather than five —
+        # fewer files and one write instead of five. They stay separate dicts in
+        # memory; only persistence is consolidated. (Migrated from the old
+        # per-map stores on first load — see _load_stores.)
+        self._meta_store       = Store(hass, _STORE_VERSION, f"{DOMAIN}.{station_id}.species_meta")
 
         # In-memory store state
         self._seen_species: dict[str, str] = {}       # species → first_seen ISO
@@ -215,13 +227,23 @@ class BirdWeatherCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         _apply_rarity_scores(view, self._baseline_ranks, self._baseline_species_count)
         return view
 
+    async def _save_meta(self) -> None:
+        """Persist the five cold per-species maps as one species_meta store."""
+        await self._meta_store.async_save({
+            "sp_codes": self._sp_codes,
+            "sci_names": self._sci_names,
+            "image_urls": self._image_urls,
+            "image_attr": self._image_attr,
+            "links": self._links_cache,
+        })
+
     @staticmethod
     async def async_remove_stores(hass: HomeAssistant, station_id: str) -> None:
-        """Delete this station's persistent .storage files.
+        """Delete this station's persistent .storage files (live + legacy).
 
         Called from async_remove_entry when the integration entry is removed.
         Store.async_remove() no-ops if a file is already gone."""
-        for suffix in _STORE_SUFFIXES:
+        for suffix in (*_STORE_SUFFIXES, *_LEGACY_STORE_SUFFIXES):
             await Store(
                 hass, _STORE_VERSION, f"{DOMAIN}.{station_id}.{suffix}"
             ).async_remove()
@@ -318,7 +340,10 @@ class BirdWeatherCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         # new-species) keep links for species not heard this session. eBird
         # falls back to a template; Wikipedia has no template, so this is its
         # only source.
-        links_dirty = False
+        # The five cold per-species maps share one species_meta store; meta_dirty
+        # tracks a change to any of them across the whole poll and they're saved
+        # once, below, after the last one (today_top) is updated.
+        meta_dirty = False
         for item in daily_raw["detections"]:
             code = item.get("spCode") or ""
             if not code:
@@ -332,30 +357,27 @@ class BirdWeatherCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             }
             if any(links.values()) and self._links_cache.get(code) != links:
                 self._links_cache[code] = links
-                links_dirty = True
-        if links_dirty:
-            await self._links_store.async_save(self._links_cache)
+                meta_dirty = True
 
         # Snapshot last_seen before the update loop (for absence-gap measuring).
         prior_last_seen = dict(self._last_seen)
 
         # Update sp_codes / scientific_name / last_seen / image lookups.
-        sp_codes_dirty = sci_names_dirty = last_seen_dirty = images_dirty = False
-        image_attr_dirty = False
+        last_seen_dirty = False
         for d in detections:
             sp = d["species"]
             if d.get("sp_code") and sp not in self._sp_codes:
                 self._sp_codes[sp] = d["sp_code"]
-                sp_codes_dirty = True
+                meta_dirty = True
             if d.get("scientific_name") and sp not in self._sci_names:
                 self._sci_names[sp] = d["scientific_name"]
-                sci_names_dirty = True
+                meta_dirty = True
             if d.get("sp_code") and d.get("image_url"):
                 if self._image_urls.get(d["sp_code"]) != d["image_url"]:
                     self._image_urls[d["sp_code"]] = d["image_url"]
-                    images_dirty = True
+                    meta_dirty = True
             if self._cache_image_attr(d.get("sp_code", ""), d):
-                image_attr_dirty = True
+                meta_dirty = True
             ts = d.get("last_seen")
             if ts and ts > self._last_seen.get(sp, ""):
                 self._last_seen[sp] = ts
@@ -373,15 +395,15 @@ class BirdWeatherCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 if d.get("sp_code"):
                     if sp not in self._sp_codes:
                         self._sp_codes[sp] = d["sp_code"]
-                        sp_codes_dirty = True
+                        meta_dirty = True
                     if d.get("image_url") and self._image_urls.get(d["sp_code"]) != d["image_url"]:
                         self._image_urls[d["sp_code"]] = d["image_url"]
-                        images_dirty = True
+                        meta_dirty = True
                 if self._cache_image_attr(d.get("sp_code", ""), d):
-                    image_attr_dirty = True
+                    meta_dirty = True
                 if d.get("scientific_name") and sp not in self._sci_names:
                     self._sci_names[sp] = d["scientific_name"]
-                    sci_names_dirty = True
+                    meta_dirty = True
                 ts = d.get("last_seen")
                 if ts and ts > self._last_seen.get(sp, ""):
                     self._last_seen[sp] = ts
@@ -391,16 +413,8 @@ class BirdWeatherCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 )
                 seen_dirty = True
 
-        if sp_codes_dirty:
-            await self._sp_codes_store.async_save(self._sp_codes)
-        if sci_names_dirty:
-            await self._sci_names_store.async_save(self._sci_names)
         if last_seen_dirty:
             await self._last_seen_store.async_save(self._last_seen)
-        if images_dirty:
-            await self._images_store.async_save(self._image_urls)
-        if image_attr_dirty:
-            await self._image_attr_store.async_save(self._image_attr)
 
         # Live new-species detection from the recent window.
         newly_seen: set[str] = set()
@@ -491,13 +505,14 @@ class BirdWeatherCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         # cache so the baseline/new-species lists can show it for species that
         # only appear here (not in the recent detection feed).
         today_top = list(overview.get("today_top") or [])
-        attr_dirty = False
         for rec in today_top:
             rec["last_seen"] = self._last_seen.get(rec["species"])
             if self._cache_image_attr(rec.get("sp_code", ""), rec):
-                attr_dirty = True
-        if attr_dirty:
-            await self._image_attr_store.async_save(self._image_attr)
+                meta_dirty = True
+        # today_top is the last writer of the cold maps this poll, so persist the
+        # consolidated species_meta store once here for all of them.
+        if meta_dirty:
+            await self._save_meta()
         _apply_rarity_scores(today_top, self._baseline_ranks, self._baseline_species_count)
 
         # last_detection's head + list come from the persisted event buffer (not
@@ -651,27 +666,46 @@ class BirdWeatherCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     # Store helpers
     # ------------------------------------------------------------------
 
+    def _store_for(self, suffix: str) -> Store:
+        return Store(self.hass, _STORE_VERSION, f"{DOMAIN}.{self.station_id}.{suffix}")
+
     async def _load_stores(self) -> None:
         seen      = await self._store.async_load()
-        sp_codes  = await self._sp_codes_store.async_load()
-        sci_names = await self._sci_names_store.async_load()
         last_seen = await self._last_seen_store.async_load()
-        images    = await self._images_store.async_load()
-        image_attr = await self._image_attr_store.async_load()
-        links     = await self._links_store.async_load()
         yearly    = await self._yearly_store.async_load()
         seven_day = await self._seven_day_store.async_load()
         events    = await self._events_store.async_load()
 
         self._seen_species   = seen      if isinstance(seen, dict)      else {}
-        self._sp_codes       = sp_codes  if isinstance(sp_codes, dict)  else {}
-        self._sci_names      = sci_names if isinstance(sci_names, dict) else {}
         self._last_seen      = last_seen if isinstance(last_seen, dict) else {}
-        self._image_urls     = images    if isinstance(images, dict)    else {}
-        self._image_attr     = image_attr if isinstance(image_attr, dict) else {}
-        self._links_cache    = links     if isinstance(links, dict)     else {}
         self._baseline_items   = yearly    if isinstance(yearly, list)    else []
         self._seven_day_data = seven_day if isinstance(seven_day, dict) else {}
+
+        # The five cold per-species maps load from one species_meta store. On the
+        # first load after upgrade it won't exist yet — assemble it from the old
+        # per-map stores (migrate), then persist the consolidated copy.
+        meta = await self._meta_store.async_load()
+        migrated = False
+        if not isinstance(meta, dict):
+            meta = {}
+            for key in _META_KEYS:
+                data = await self._store_for(key).async_load()
+                if isinstance(data, dict):
+                    meta[key] = data
+            migrated = bool(meta)
+
+        def _d(key: str) -> dict:
+            value = meta.get(key)
+            return value if isinstance(value, dict) else {}
+
+        self._sp_codes    = _d("sp_codes")
+        self._sci_names   = _d("sci_names")
+        self._image_urls  = _d("image_urls")
+        self._image_attr  = _d("image_attr")
+        self._links_cache = _d("links")
+
+        if migrated:
+            await self._save_meta()
 
         # Rehydrate the rolling event buffer so last_detection shows its last
         # value immediately after a restart (and survives an outage) instead of
@@ -684,11 +718,10 @@ class BirdWeatherCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             self._event_buffer.sort(key=lambda e: e.get("last_seen") or "", reverse=True)
             del self._event_buffer[LAST_DETECTION_EVENT_LIMIT:]
 
-        # One-time cleanup of the legacy .sticky store (the rolling event buffer +
-        # live notable replace it — #62). async_remove no-ops if already gone.
-        await Store(
-            self.hass, _STORE_VERSION, f"{DOMAIN}.{self.station_id}.sticky"
-        ).async_remove()
+        # One-time cleanup of the legacy per-map + .sticky stores now folded into
+        # species_meta / the event buffer. async_remove no-ops if already gone.
+        for legacy in _LEGACY_STORE_SUFFIXES:
+            await self._store_for(legacy).async_remove()
 
         self._baseline_ranks = {
             item["species"]: item["rank"]

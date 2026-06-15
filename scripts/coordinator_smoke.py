@@ -59,9 +59,8 @@ async def main(station_id: str) -> None:
         # Drives _async_update_data directly (not _async_setup), so stores are
         # never loaded — the fakes above stand in.
         for attr in (
-            "_store", "_sp_codes_store", "_sci_names_store", "_last_seen_store",
-            "_images_store", "_image_attr_store", "_links_store", "_yearly_store",
-            "_seven_day_store", "_events_store",
+            "_store", "_last_seen_store", "_yearly_store", "_seven_day_store",
+            "_events_store", "_meta_store",
         ):
             setattr(coord, attr, _FakeStore())
 
