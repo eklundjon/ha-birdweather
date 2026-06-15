@@ -70,6 +70,7 @@ class BirdWeatherCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     """
 
     def __init__(self, hass: HomeAssistant, entry: BirdWeatherConfigEntry) -> None:
+        station_id = entry.data[CONF_STATION_ID]
         # Poll interval is user-tunable (minutes); an options change reloads the
         # entry, so a new interval takes effect via this fresh coordinator.
         scan_minutes = entry.options.get(
@@ -78,11 +79,13 @@ class BirdWeatherCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         super().__init__(
             hass,
             _LOGGER,
-            name=DOMAIN,
+            # Include the station id so log lines disambiguate which station they
+            # refer to when more than one is configured.
+            name=f"{DOMAIN} {station_id}",
             config_entry=entry,
             update_interval=timedelta(minutes=scan_minutes),
         )
-        self.station_id = station_id = entry.data[CONF_STATION_ID]
+        self.station_id = station_id
         self.device_name = entry.data.get(CONF_STATION_NAME, "BirdWeather Station")
         self._session = async_get_clientsession(hass)
         self._client = BirdWeatherClient(self._session)

@@ -6,12 +6,11 @@ from homeassistant.components.binary_sensor import (
 )
 from homeassistant.const import EntityCategory
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
-from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from .const import CONF_STATION_ID, DOMAIN
+from .const import CONF_STATION_ID
 from .coordinator import BirdWeatherConfigEntry, BirdWeatherCoordinator
+from .entity import BirdWeatherEntity
 
 PARALLEL_UPDATES = 0
 
@@ -26,9 +25,7 @@ async def async_setup_entry(
     async_add_entities([BirdWeatherExtendedSilenceSensor(coordinator, station_id)])
 
 
-class BirdWeatherExtendedSilenceSensor(
-    CoordinatorEntity[BirdWeatherCoordinator], BinarySensorEntity
-):
+class BirdWeatherExtendedSilenceSensor(BirdWeatherEntity, BinarySensorEntity):
     """Problem sensor: on when the station has logged no detections in the
     trailing 24-hour window (an "extended silence").
 
@@ -37,7 +34,6 @@ class BirdWeatherExtendedSilenceSensor(
     is unavailable too — "we don't know" rather than a false problem.
     """
 
-    _attr_has_entity_name = True
     _attr_device_class = BinarySensorDeviceClass.PROBLEM
     _attr_translation_key = "extended_silence"
     # Device-health signal (is the station reporting?), not a bird observation —
@@ -46,19 +42,8 @@ class BirdWeatherExtendedSilenceSensor(
     _attr_entity_category = EntityCategory.DIAGNOSTIC
 
     def __init__(self, coordinator: BirdWeatherCoordinator, station_id: str) -> None:
-        super().__init__(coordinator)
-        self._station_id = station_id
+        super().__init__(coordinator, station_id)
         self._attr_unique_id = f"{station_id}_extended_silence"
-
-    @property
-    def device_info(self) -> DeviceInfo:
-        return DeviceInfo(
-            identifiers={(DOMAIN, self._station_id)},
-            name=self.coordinator.device_name,
-            manufacturer="BirdWeather",
-            model="BirdWeather Station",
-            configuration_url=f"https://app.birdweather.com/stations/{self._station_id}",
-        )
 
     @property
     def is_on(self) -> bool:

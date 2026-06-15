@@ -23,12 +23,11 @@ from homeassistant.const import (
     UnitOfTemperature,
 )
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
-from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from .const import CONF_STATION_ID, DOMAIN
+from .const import CONF_STATION_ID
 from .coordinator import BirdWeatherConfigEntry, BirdWeatherCoordinator
+from .entity import BirdWeatherEntity
 
 PARALLEL_UPDATES = 0
 
@@ -227,25 +226,10 @@ async def async_setup_entry(
     async_add_entities(entities)
 
 
-class _BirdWeatherSensor(CoordinatorEntity[BirdWeatherCoordinator], SensorEntity):
-    """Base class for BirdWeather sensors."""
+class _BirdWeatherSensor(BirdWeatherEntity, SensorEntity):
+    """Base class for BirdWeather sensors (device info comes from BirdWeatherEntity)."""
 
-    _attr_has_entity_name = True
     _unrecorded_attributes = frozenset({"detections"})
-
-    def __init__(self, coordinator: BirdWeatherCoordinator, station_id: str) -> None:
-        super().__init__(coordinator)
-        self._station_id = station_id
-
-    @property
-    def device_info(self) -> DeviceInfo:
-        return DeviceInfo(
-            identifiers={(DOMAIN, self._station_id)},
-            name=self.coordinator.device_name,
-            manufacturer="BirdWeather",
-            model="BirdWeather Station",
-            configuration_url=f"https://app.birdweather.com/stations/{self._station_id}",
-        )
 
 
 class BirdWeatherRecentDetectionsSensor(_BirdWeatherSensor):
