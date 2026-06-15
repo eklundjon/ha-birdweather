@@ -116,6 +116,11 @@ After setup, open the integration's **Configure** dialog to tune:
 - **Hide detections below confidence** — suppress low-confidence "maybe" detections from the recent / last / notable / new sensors and the cards (0% = show everything, the default). The 24-hour **total** and **diversity** counts come straight from BirdWeather's own aggregates and are *not* affected by this filter — they always reflect the station's own confidence floor.
 - **Only alert above confidence** — don't fire the new-species, unusual-visitor, or watched-species triggers below this confidence (0% = alert on any, the default). Independent of the hide filter, so you can keep seeing maybes while only being pinged on confident hits.
 - **Watched species** — choose species (from a pick-list of ones your station has detected, and/or a free-text list for ones it hasn't) to be alerted about. When a watched species is heard, the **"Watched species detected"** device trigger fires — wire it to a notification in the automation editor.
+- **Advanced** (collapsed by default) — window lengths and poll cadence; defaults suit most stations:
+  - **Recent window** (1–24 h, default 1) — how far back "Recent detections" looks and how long a species stays "recent" before it can re-fire a trigger.
+  - **Poll interval** (5–60 min, default 10) — how often the station is polled. Changing it reloads the integration so the new cadence takes effect immediately.
+  - **Rarity baseline window** (1–24 months, default 1) — trailing months of BirdWeather topSpecies counts used to rank rarity.
+  - **New-species momentum window** (7–365 days, default 30) — the window behind the "New species" count sensor.
 
 ## Troubleshooting
 

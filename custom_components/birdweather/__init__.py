@@ -47,8 +47,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: BirdWeatherConfigEntry) 
 async def _async_options_updated(
     hass: HomeAssistant, entry: BirdWeatherConfigEntry
 ) -> None:
-    coordinator: BirdWeatherCoordinator = entry.runtime_data
-    await coordinator.async_request_refresh()
+    # Reload so every knob takes effect — including the poll interval, which is
+    # read in the coordinator's __init__ and so needs a fresh coordinator (a bare
+    # refresh wouldn't pick it up).
+    await hass.config_entries.async_reload(entry.entry_id)
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: BirdWeatherConfigEntry) -> bool:

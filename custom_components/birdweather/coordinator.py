@@ -19,7 +19,11 @@ from .const import (
     CONF_ALERT_MIN_CONFIDENCE,
     CONF_AUDIO_ENABLED,
     CONF_FEED_MIN_CONFIDENCE,
+    CONF_NEW_SPECIES_WINDOW_DAYS,
     CONF_NOTABLE_RARITY_WEIGHT,
+    CONF_RARITY_PERIOD_MONTHS,
+    CONF_RECENT_WINDOW_HOURS,
+    CONF_SCAN_INTERVAL,
     CONF_STATION_ID,
     CONF_STATION_NAME,
     CONF_WATCHED_EXTRA,
@@ -66,12 +70,17 @@ class BirdWeatherCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     """
 
     def __init__(self, hass: HomeAssistant, entry: BirdWeatherConfigEntry) -> None:
+        # Poll interval is user-tunable (minutes); an options change reloads the
+        # entry, so a new interval takes effect via this fresh coordinator.
+        scan_minutes = entry.options.get(
+            CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL // 60
+        )
         super().__init__(
             hass,
             _LOGGER,
             name=DOMAIN,
             config_entry=entry,
-            update_interval=timedelta(seconds=DEFAULT_SCAN_INTERVAL),
+            update_interval=timedelta(minutes=scan_minutes),
         )
         self.station_id = station_id = entry.data[CONF_STATION_ID]
         self.device_name = entry.data.get(CONF_STATION_NAME, "BirdWeather Station")
@@ -139,9 +148,12 @@ class BirdWeatherCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
         # Refresh the rarity baseline once per calendar day.
         if self._baseline_fetched_date != today:
+            rarity_months = self.config_entry.options.get(
+                CONF_RARITY_PERIOD_MONTHS, RARITY_PERIOD_MONTHS
+            )
             try:
                 baseline_raw = await self._client.get_baseline_count(
-                    self.station_id, months=RARITY_PERIOD_MONTHS
+                    self.station_id, months=rarity_months
                 )
                 self._baseline_ranks, self._baseline_species_count, self._baseline_items = (
                     _process_baseline_count(baseline_raw)
@@ -194,8 +206,11 @@ class BirdWeatherCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         # The fetch returns the most-recent N events regardless of age; carve
         # the trailing 24h (and the 1h subset) out of it client-side. Busy
         # stations may exhaust the limit inside 24h — see DETECTION_FETCH_LIMIT.
+        recent_hours = self.config_entry.options.get(
+            CONF_RECENT_WINDOW_HOURS, RECENT_WINDOW_HOURS
+        )
         daily_raw = {"detections": _filter_by_dt(raw_all, now - timedelta(hours=DAILY_WINDOW_HOURS))}
-        recent_raw = {"detections": _filter_by_dt(daily_raw, now - timedelta(hours=RECENT_WINDOW_HOURS))}
+        recent_raw = {"detections": _filter_by_dt(daily_raw, now - timedelta(hours=recent_hours))}
 
         # Master switch for "play the call" (opt-in; off by default). When off,
         # audio_url is never surfaced, so the cards render no play button.
@@ -373,7 +388,11 @@ class BirdWeatherCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             overview = await self._client.get_overview(
                 self.station_id,
                 today=today,
-                new_species_cutoff=today - timedelta(days=NEW_SPECIES_WINDOW_DAYS),
+                new_species_cutoff=today - timedelta(
+                    days=self.config_entry.options.get(
+                        CONF_NEW_SPECIES_WINDOW_DAYS, NEW_SPECIES_WINDOW_DAYS
+                    )
+                ),
                 baseline_days=ACTIVITY_BASELINE_DAYS,
             )
         except (aiohttp.ClientError, BirdWeatherError) as err:

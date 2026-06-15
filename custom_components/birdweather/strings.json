@@ -45,6 +45,24 @@
           "audio_enabled": "Beta. Off by default. Adds a “play the call” button on the cards that plays a detection’s soundscape in the browser. Heads-up: if your BirdWeather station has audio sharing turned off, its soundscapes are silent — the button will appear but play nothing (we stream BirdWeather’s clip directly and can’t detect a silent one). Off means no audio_url is exposed, so no button.",
           "watched_species": "Pick from species your station has already detected. A “watched species detected” device trigger fires when one is heard.",
           "watched_species_extra": "Add species you haven’t recorded yet (e.g. a hoped-for visitor) — one common name per line, exactly as BirdWeather spells it."
+        },
+        "sections": {
+          "advanced": {
+            "name": "Advanced",
+            "description": "Window lengths and poll cadence. Defaults suit most stations — change only if you know you want to.",
+            "data": {
+              "recent_window_hours": "Recent window",
+              "scan_interval": "Poll interval",
+              "rarity_period_months": "Rarity baseline window",
+              "new_species_window_days": "New-species momentum window"
+            },
+            "data_description": {
+              "recent_window_hours": "How far back the “Recent detections” sensor looks, and how long a species stays “recent” before it can re-fire a new/unusual/watched trigger. Default 1 hour. Longer means a fuller recent list but fewer repeat alerts.",
+              "scan_interval": "How often the station is polled, in minutes (5–60, default 10). Shorter is fresher but more API load.",
+              "rarity_period_months": "Trailing months of BirdWeather topSpecies counts used to rank rarity (the notable/rarest sensors and the rarity_score on events). Default 1 month. Shorter favors recent frequency; longer trends toward all-time.",
+              "new_species_window_days": "Trailing days for the “new species” momentum sensor — how many species were first heard here within this window. Default 30. Display-only; affects just that sensor."
+            }
+          }
         }
       }
     }
