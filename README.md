@@ -94,14 +94,14 @@ entities:
 
 The integration exposes three **device triggers** — new-species, unusual-visitor, and watched-species — in the automation editor (**When → Device**). Each is a filtered view of the `birdweather_event` bus event, whose payload carries the species, scientific name, photo (`image_url`), reference links (`ebird_url`, `wikipedia_url`), the call recording (`audio_url`), and per-trigger extras (`days_absent`, `lifetime_species_count`).
 
-Four ready-made **blueprints** are included as worked examples. Import each via **Settings → Automations & scenes → Blueprints → Import blueprint**, pasting the raw URL:
+Four ready-made **blueprints** are included as worked examples. Blueprints aren't installed with the integration — Home Assistant imports them from a URL — so click a badge for one-click import ([full instructions](docs/automations.md#importing-a-blueprint)):
 
-```
-https://github.com/eklundjon/ha-birdweather/blob/main/blueprints/automation/birdweather/new_species_notification.yaml
-https://github.com/eklundjon/ha-birdweather/blob/main/blueprints/automation/birdweather/unusual_visitor_notification.yaml
-https://github.com/eklundjon/ha-birdweather/blob/main/blueprints/automation/birdweather/watched_species_notification.yaml
-https://github.com/eklundjon/ha-birdweather/blob/main/blueprints/automation/birdweather/play_call_on_media_player.yaml
-```
+| Blueprint | Import |
+| --- | --- |
+| New species notification | [![Open your Home Assistant instance and show the blueprint import dialog with a specific blueprint pre-filled.](https://my.home-assistant.io/badges/blueprint_import.svg)](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https%3A%2F%2Fgithub.com%2Feklundjon%2Fha-birdweather%2Fblob%2Fmain%2Fblueprints%2Fautomation%2Fbirdweather%2Fnew_species_notification.yaml) |
+| Unusual visitor notification | [![Open your Home Assistant instance and show the blueprint import dialog with a specific blueprint pre-filled.](https://my.home-assistant.io/badges/blueprint_import.svg)](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https%3A%2F%2Fgithub.com%2Feklundjon%2Fha-birdweather%2Fblob%2Fmain%2Fblueprints%2Fautomation%2Fbirdweather%2Funusual_visitor_notification.yaml) |
+| Watched species notification | [![Open your Home Assistant instance and show the blueprint import dialog with a specific blueprint pre-filled.](https://my.home-assistant.io/badges/blueprint_import.svg)](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https%3A%2F%2Fgithub.com%2Feklundjon%2Fha-birdweather%2Fblob%2Fmain%2Fblueprints%2Fautomation%2Fbirdweather%2Fwatched_species_notification.yaml) |
+| Play the call on a media player | [![Open your Home Assistant instance and show the blueprint import dialog with a specific blueprint pre-filled.](https://my.home-assistant.io/badges/blueprint_import.svg)](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https%3A%2F%2Fgithub.com%2Feklundjon%2Fha-birdweather%2Fblob%2Fmain%2Fblueprints%2Fautomation%2Fbirdweather%2Fplay_call_on_media_player.yaml) |
 
 The three notification blueprints send a mobile push (with the bird's photo) and differ only in trigger; the new-species one adds eBird/Wikipedia tap-through buttons and the lifetime count, and the unusual-visitor one attaches the call recording when audio is enabled. The fourth plays a detection's call on a media player. Since every `birdweather_event` carries the same fields, treat them as recipes and mix in whatever you want.
 
