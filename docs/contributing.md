@@ -71,8 +71,9 @@ canned GraphQL payloads — rather than mocking aiohttp deep in the coordinator.
 
 ## Linting
 
-Linting is `ruff`, pinned to the same version in `requirements_test.txt` and in
-CI so local and CI never disagree:
+Linting is `ruff`, pinned in `requirements_test.txt`. CI's lint job installs
+that exact pin by reading the file, rather than repeating the version, so local
+and CI cannot drift apart — change the pin in one place and both follow:
 
 ```bash
 .venv-test/bin/python -m ruff check .
