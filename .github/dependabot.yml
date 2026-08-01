@@ -1,0 +1,41 @@
+version: 2
+
+# Dependency update PRs. Security *alerts* work off the dependency graph and
+# don't need this file — this is only about routine version bumps.
+#
+# Mirrors ha-haikubox's config, minus its aiofiles ignore: this integration
+# declares no third-party runtime requirements (it uses Home Assistant's bundled
+# aiohttp), so requirements_test.txt holds nothing that mirrors manifest.json.
+updates:
+  # GitHub Actions used by the workflows in .github/workflows/.
+  # Worth having: two of them (hacs/action@main, home-assistant/actions/hassfest@master)
+  # deliberately track moving branches per their vendors' documented usage, so
+  # this at least keeps the pinned ones (actions/checkout, actions/setup-python)
+  # current and visible.
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: ci
+    groups:
+      actions:
+        patterns: ["*"]
+
+  # Python test dependencies (requirements_test.txt).
+  #
+  # Most entries there are deliberately unpinned (PHACC, and therefore Home
+  # Assistant, are pinned per-job in test.yml instead), so in practice the only
+  # thing Dependabot bumps here is the ruff pin — which the lint job now reads
+  # straight out of requirements_test.txt, so a bump updates CI in the same PR.
+  - package-ecosystem: pip
+    directory: "/"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: chore
+    groups:
+      python:
+        patterns: ["*"]
