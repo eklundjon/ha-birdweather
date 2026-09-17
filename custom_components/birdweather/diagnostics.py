@@ -20,11 +20,14 @@ TO_REDACT = {CONF_STATION_ID, CONF_STATION_NAME, "unique_id", "title"}
 async def async_get_config_entry_diagnostics(
     hass: HomeAssistant, entry: BirdWeatherConfigEntry
 ) -> dict[str, Any]:
-    coordinator = entry.runtime_data
+    coordinator = getattr(entry, "runtime_data", None)
+    entry_data = async_redact_data(entry.as_dict(), TO_REDACT)
+    if coordinator is None:
+        return {"entry": entry_data, "coordinator": None, "data": None}
     fetched = coordinator.baseline_fetched_date
 
     return {
-        "entry": async_redact_data(entry.as_dict(), TO_REDACT),
+        "entry": entry_data,
         "coordinator": {
             "last_update_success": coordinator.last_update_success,
             "update_interval": str(coordinator.update_interval),

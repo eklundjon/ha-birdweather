@@ -41,6 +41,7 @@ async def main(station_id: str) -> None:
         coord._baseline_ranks = {}
         coord._baseline_species_count = 0
         coord._baseline_fetched_date = None
+        coord._baseline_available = False
         coord._baseline_items = []
         coord._diel_by_species = {}
         coord._diel_station = []

@@ -302,7 +302,9 @@ class BirdWeatherClient:
     async def get_detections(self, station_id: str, first: int = 50) -> list[dict[str, Any]]:
         """Most recent detections for a station, normalised to the common shape."""
         data = await self._query(_DETECTIONS_QUERY, {"id": station_id, "first": first})
-        station = data.get("station") or {}
+        station = data.get("station")
+        if station is None:
+            raise BirdWeatherError("Station not found or not publicly accessible")
         nodes = (station.get("detections") or {}).get("nodes") or []
         return [_normalise_detection(n) for n in nodes]
 
@@ -323,7 +325,9 @@ class BirdWeatherClient:
         can thread them through after normalisation.
         """
         data = await self._query(_DETECTIONS_QUERY, {"id": station_id, "first": first})
-        station = data.get("station") or {}
+        station = data.get("station")
+        if station is None:
+            raise BirdWeatherError("Station not found or not publicly accessible")
         nodes = (station.get("detections") or {}).get("nodes") or []
         out: list[dict[str, Any]] = []
         for n in nodes:
@@ -356,7 +360,9 @@ class BirdWeatherClient:
             _TOP_SPECIES_QUERY,
             {"id": station_id, "period": {"count": months, "unit": "month"}, "limit": limit},
         )
-        station = data.get("station") or {}
+        station = data.get("station")
+        if station is None:
+            raise BirdWeatherError("Station not found or not publicly accessible")
         nodes = station.get("topSpecies") or []
         out: list[dict[str, Any]] = []
         for n in nodes:

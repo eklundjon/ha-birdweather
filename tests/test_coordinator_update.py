@@ -8,10 +8,12 @@ records, and the new-species bootstrap.
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
+from unittest.mock import AsyncMock
 
 import pytest
 from homeassistant.helpers.update_coordinator import UpdateFailed
 
+from custom_components.birdweather.client import BirdWeatherError
 from custom_components.birdweather.const import (
     CONF_AUDIO_ENABLED,
     CONF_FEED_MIN_CONFIDENCE,
@@ -158,11 +160,81 @@ async def test_overview_fields_surfaced() -> None:
     assert data["lifetime_species_count"] == 57
 
 
-async def test_empty_baseline_raises_update_failed() -> None:
+async def test_new_station_without_detections_loads() -> None:
+    client = make_client(baseline=[], detections={"detections": []})
+    coord = make_coordinator(client=client)
+    data = await coord._async_update_data()
+
+    assert data["recent_detections"] == []
+    assert data["last_detection"] is None
+    assert data["lifetime_species_count"] == 0
+    assert data["yearly_top_species"] == []
+    assert coord.baseline_fetched_date == datetime.now(UTC).date()
+
+
+async def test_empty_baseline_does_not_hide_incoming_detections() -> None:
     client = make_client(baseline=[], detections=_detections())
     coord = make_coordinator(client=client)
-    with pytest.raises(UpdateFailed):
+    data = await coord._async_update_data()
+
+    assert data["last_detection"]["species"] == "American Robin"
+    assert len(data["detections_24h"]) == 3
+    assert data["yearly_top_species"] == []
+
+
+async def test_failed_initial_baseline_retries_and_recovers() -> None:
+    client = make_client(baseline=[], detections={"detections": []})
+    client.get_baseline_count.side_effect = BirdWeatherError("unavailable")
+    coord = make_coordinator(client=client)
+
+    with pytest.raises(UpdateFailed, match="Rarity baseline not yet available"):
         await coord._async_update_data()
+    assert coord.baseline_fetched_date is None
+
+    client.get_baseline_count.side_effect = None
+    data = await coord._async_update_data()
+    assert data["last_detection"] is None
+    assert client.get_baseline_count.await_count == 2
+
+
+@pytest.mark.parametrize("baseline", [[], _BASELINE])
+async def test_failed_baseline_refresh_preserves_cached_data(baseline) -> None:
+    client = make_client(baseline=baseline, detections=_detections())
+    coord = make_coordinator(client=client)
+    before = await coord._async_update_data()
+    yesterday = datetime.now(UTC).date() - timedelta(days=1)
+    coord._baseline_fetched_date = yesterday
+    client.get_baseline_count.side_effect = BirdWeatherError("unavailable")
+
+    after = await coord._async_update_data()
+    assert after["yearly_top_species"] == before["yearly_top_species"]
+    assert after["last_detection"] == before["last_detection"]
+    assert coord.baseline_fetched_date == yesterday
+
+
+async def test_empty_baseline_does_not_mask_detection_feed_failure() -> None:
+    client = make_client(baseline=[])
+    client.get_raw_detections.side_effect = BirdWeatherError("unavailable")
+    coord = make_coordinator(client=client)
+
+    with pytest.raises(UpdateFailed, match="Error communicating with BirdWeather API"):
+        await coord._async_update_data()
+
+
+@pytest.mark.parametrize("cached_baseline", [[], None, {"invalid": "cache"}])
+async def test_empty_baseline_cache_survives_restart_during_outage(hass, cached_baseline) -> None:
+    client = make_client()
+    client.get_baseline_count.side_effect = BirdWeatherError("unavailable")
+    coord = make_coordinator(hass=hass, client=client)
+    coord._yearly_store.async_load = AsyncMock(return_value=cached_baseline)
+    await coord._load_stores()
+
+    if cached_baseline == []:
+        data = await coord._async_update_data()
+        assert data["yearly_top_species"] == []
+    else:
+        with pytest.raises(UpdateFailed, match="Rarity baseline not yet available"):
+            await coord._async_update_data()
 
 
 async def test_feed_confidence_filter_drops_low_events() -> None:
