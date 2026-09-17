@@ -135,6 +135,7 @@ class BirdWeatherCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._baseline_ranks: dict[str, int] = {}
         self._baseline_species_count: int = 0
         self._baseline_fetched_date: date | None = None
+        self._baseline_available = False
 
         # Diel activity (time-of-day histogram) — a slow-changing daily rhythm,
         # so refreshed once per calendar day. `by_species` maps common name → a
@@ -266,13 +267,14 @@ class BirdWeatherCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     _process_baseline_count(baseline_raw)
                 )
                 self._baseline_fetched_date = today
+                self._baseline_available = True
                 await self._yearly_store.async_save(self._baseline_items)
             except (aiohttp.ClientError, BirdWeatherError) as err:
                 _LOGGER.warning("Could not fetch rarity baseline: %s", err)
 
-        if not self._baseline_ranks:
+        if not self._baseline_available:
             raise UpdateFailed(
-                "Rarity baseline not yet available — topSpecies fetch failed on "
+                "Rarity baseline not yet available: topSpecies fetch failed on "
                 "first poll and there is no cached baseline"
             )
 
@@ -679,6 +681,7 @@ class BirdWeatherCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._seen_species   = seen      if isinstance(seen, dict)      else {}
         self._last_seen      = last_seen if isinstance(last_seen, dict) else {}
         self._baseline_items   = yearly    if isinstance(yearly, list)    else []
+        self._baseline_available = isinstance(yearly, list)
         self._seven_day_data = seven_day if isinstance(seven_day, dict) else {}
 
         # The five cold per-species maps load from one species_meta store. On the

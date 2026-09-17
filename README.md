@@ -137,6 +137,12 @@ After setup, open the integration's **Configure** dialog to tune:
 
 ## Troubleshooting
 
+**A new station has no detections yet.**
+The integration still loads its sensors, including any PUC hardware readings.
+Recent detections show zero and last detection stays *unknown* until BirdWeather
+returns a public detection. An empty species history is valid, including after
+a Home Assistant restart.
+
 **A bird photo looks oddly cropped (a beak, tail, or head cut off).**
 The photos come from BirdWeather, which serves one square crop of a contributor
 photo per species — and a few are cropped tightly at the source. The cards

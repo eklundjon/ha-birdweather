@@ -8,7 +8,9 @@ from __future__ import annotations
 
 from datetime import date
 
-from custom_components.birdweather.client import BirdWeatherClient
+import pytest
+
+from custom_components.birdweather.client import BirdWeatherClient, BirdWeatherError
 
 
 class _Resp:
@@ -79,8 +81,17 @@ async def test_get_raw_detections_emits_pipeline_shape() -> None:
     assert rec["image_credit"] == "Pat"
 
 
-async def test_get_raw_detections_empty_station() -> None:
-    assert await _client({"station": None}).get_raw_detections("1") == {"detections": []}
+@pytest.mark.parametrize("method", ["get_raw_detections", "get_baseline_count"])
+async def test_inaccessible_station_raises(method) -> None:
+    with pytest.raises(BirdWeatherError, match="not publicly accessible"):
+        await getattr(_client({"station": None}), method)("1")
+
+
+async def test_accessible_station_without_detections() -> None:
+    data = {"station": {"detections": {"nodes": []}, "topSpecies": []}}
+    client = _client(data)
+    assert await client.get_raw_detections("1") == {"detections": []}
+    assert await client.get_baseline_count("1") == []
 
 
 # ---- get_baseline_count / get_species_counts ------------------------------- #

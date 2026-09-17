@@ -79,3 +79,20 @@ async def test_diagnostics_handles_unfetched_baseline(hass: HomeAssistant) -> No
 
     diag = await async_get_config_entry_diagnostics(hass, entry)
     assert diag["coordinator"]["baseline_fetched_date"] is None
+
+
+async def test_diagnostics_available_when_setup_has_not_completed(hass: HomeAssistant) -> None:
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        unique_id=STATION_ID,
+        title="Backyard",
+        data={CONF_STATION_ID: STATION_ID, CONF_STATION_NAME: "Backyard"},
+    )
+    entry.add_to_hass(hass)
+
+    diag = await async_get_config_entry_diagnostics(hass, entry)
+
+    assert diag["coordinator"] is None
+    assert diag["data"] is None
+    assert STATION_ID not in json.dumps(diag, default=str)
+    assert diag["entry"]["title"] == "**REDACTED**"

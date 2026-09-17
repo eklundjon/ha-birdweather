@@ -73,6 +73,7 @@ def make_coordinator(
     c._baseline_ranks = {}
     c._baseline_species_count = 0
     c._baseline_fetched_date = None
+    c._baseline_available = False
     c._baseline_items = []
     c._diel_by_species = {}
     c._diel_station = []
