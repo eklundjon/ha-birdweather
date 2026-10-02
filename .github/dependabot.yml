@@ -31,6 +31,10 @@ updates:
   # in requirements_ha_latest.txt, which moves CI's "HA latest" job to each new
   # Home Assistant release. PHACC gets its own group so a Home Assistant bump
   # that breaks something doesn't hold up the ruff bump.
+  #
+  # Dependabot resolves with the Python in .python-version. Without that file it
+  # proposed no PHACC releases needing 3.14 (0.13.368 was skipped). Keep the
+  # file at the "HA latest" job's Python in test.yml.
   - package-ecosystem: pip
     directory: "/"
     schedule:

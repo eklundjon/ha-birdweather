@@ -7,7 +7,8 @@
 # Assistant release first gets tested. The 2025.4 minimum stays pinned in
 # test.yml, out of Dependabot's reach, on purpose.
 #
-# PHACC's own Python floor moves with Home Assistant's. If a bump fails to
-# install because it needs a newer Python, raise the "HA latest" job's python
-# in test.yml in the same PR.
+# PHACC's own Python floor moves with Home Assistant's. When it rises, raise
+# the "HA latest" job's python in test.yml and .python-version together.
+# Dependabot resolves with .python-version, so it won't propose a PHACC release
+# that needs a newer Python than that file says.
 pytest-homeassistant-custom-component==0.13.367
