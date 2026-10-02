@@ -1,10 +1,11 @@
-"""Prove the (unmodified) Haikubox coordinator pipeline digests live
-BirdWeather data fed through the client's pipeline-contract adapter.
+"""Run the coordinator's bird pipeline over live BirdWeather data and print a
+readable digest: rarity baseline, notable and rarest species, recent events.
 
-Imports the pure helper functions straight from ha-haikubox and runs them
-exactly as the coordinator's _async_update_data would. Requires a sibling
-ha-haikubox checkout and the HA venv (the helpers live in a module that
-imports homeassistant).
+Calls the real client and the pure normalize helpers in the same order, with
+the same defaults, as BirdWeatherCoordinator._async_update_data, but with no
+coordinator, stores, or HA state. Use it to eyeball what a pipeline change does
+to real data; coordinator_smoke.py covers the full coordinator end to end.
+Needs the HA venv (importing the package imports homeassistant).
 
 Run:  python scripts/pipeline_smoke.py [station_id]
 """
@@ -16,63 +17,81 @@ from pathlib import Path
 
 import aiohttp
 
-# Both repo roots go on the path; `custom_components` is a namespace package in
-# each, so both integrations import as packages. Putting the birdweather package
-# dir itself on the path would let its statistics.py shadow the stdlib module.
-_REPO = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(_REPO))
-sys.path.insert(0, str(_REPO.parent / "ha-haikubox"))
+# Repo root on the path so the integration imports as a package. Putting the
+# birdweather package dir itself on the path would let its statistics.py shadow
+# the stdlib module.
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from custom_components.haikubox.coordinator import (  # noqa: E402
+from custom_components.birdweather.client import (  # noqa: E402
+    API_BIRDS,
+    BirdWeatherClient,
+)
+from custom_components.birdweather.const import (  # noqa: E402
+    DAILY_WINDOW_HOURS,
+    DEFAULT_NOTABLE_RARITY_WEIGHT,
+    DETECTION_FETCH_LIMIT,
+    LAST_DETECTION_EVENT_LIMIT,
+    NOTABILITY_WINDOW_HOURS,
+    RARITY_PERIOD_MONTHS,
+    RECENT_WINDOW_HOURS,
+)
+from custom_components.birdweather.normalize import (  # noqa: E402
     _apply_notability_scores,
     _apply_rarity_scores,
     _build_recent_events,
     _filter_by_dt,
     _normalise_detections,
-    _process_yearly_count,
+    _process_baseline_count,
 )
-
-from custom_components.birdweather.client import BirdWeatherClient  # noqa: E402
-
-RECENT_WINDOW_HOURS = 1
-NOTABILITY_WINDOW_HOURS = 24
 
 
 async def main(station_id: str) -> None:
     async with aiohttp.ClientSession() as session:
         bw = BirdWeatherClient(session)
-        raw = await bw.get_raw_detections(station_id, first=300)
-        baseline = await bw.get_yearly_count(station_id, months=1, limit=200)
+        baseline = await bw.get_baseline_count(station_id, months=RARITY_PERIOD_MONTHS)
+        raw = await bw.get_raw_detections(
+            station_id, first=DETECTION_FETCH_LIMIT, classifications=[API_BIRDS]
+        )
 
     n_raw = len(raw["detections"])
     with_image = sum(1 for d in raw["detections"] if d.get("image"))
     with_audio = sum(1 for d in raw["detections"] if d.get("audio"))
     print(f"raw events: {n_raw}  (image={with_image}, audio={with_audio})")
 
-    # --- exactly what the coordinator does ---
-    ranks, sp_count, _items = _process_yearly_count(baseline)
-    print(f"rarity baseline: {sp_count} species ranked")
-
-    daily = sorted(_normalise_detections(raw), key=lambda x: x.get("count", 0), reverse=True)
-    _apply_rarity_scores(daily, ranks, sp_count)
+    ranks, sp_count, _items = _process_baseline_count(baseline)
+    print(f"rarity baseline: {sp_count} species ranked over {RARITY_PERIOD_MONTHS} month(s)")
 
     now = datetime.now(UTC)
-    recent_raw = {"detections": _filter_by_dt(raw, now - timedelta(hours=RECENT_WINDOW_HOURS))}
+    daily_raw = {"detections": _filter_by_dt(raw, now - timedelta(hours=DAILY_WINDOW_HOURS))}
+    recent_raw = {
+        "detections": _filter_by_dt(daily_raw, now - timedelta(hours=RECENT_WINDOW_HOURS))
+    }
+
     recent = _normalise_detections(recent_raw)
     _apply_rarity_scores(recent, ranks, sp_count)
+    daily = sorted(_normalise_detections(daily_raw), key=lambda x: x.get("count", 0), reverse=True)
+    _apply_rarity_scores(daily, ranks, sp_count)
 
-    _apply_notability_scores(daily, now, NOTABILITY_WINDOW_HOURS, 0.7)
+    _apply_notability_scores(
+        daily, now, NOTABILITY_WINDOW_HOURS, DEFAULT_NOTABLE_RARITY_WEIGHT / 100.0
+    )
     notable = sorted(daily, key=lambda x: x.get("notability_score", 0), reverse=True)
     rarest = sorted(daily, key=lambda x: x.get("rarity_score", 0), reverse=True)
-    events = _build_recent_events(raw, ranks, sp_count, lambda _c: "", 50)
+    events = _build_recent_events(
+        daily_raw, ranks, sp_count, lambda _c: None, LAST_DETECTION_EVENT_LIMIT
+    )
 
-    print(f"\nper-species (24h-ish window): {len(daily)}   recent (1h): {len(recent)}   "
-          f"recent_events: {len(events)}")
+    print(
+        f"\nper-species ({DAILY_WINDOW_HOURS}h): {len(daily)}   "
+        f"recent ({RECENT_WINDOW_HOURS}h): {len(recent)}   recent_events: {len(events)}"
+    )
 
     print("\n== top notable (rarity-weighted) ==")
     for d in notable[:5]:
-        print(f"  {d['species']:24} count={d['count']:3} rarity={d['rarity_score']:.3f} "
-              f"notability={d['notability_score']:.3f} rank={d['yearly_rank']}")
+        print(
+            f"  {d['species']:24} count={d['count']:3} rarity={d['rarity_score']:.3f} "
+            f"notability={d['notability_score']:.3f} rank={d['yearly_rank']}"
+        )
 
     print("\n== rarest (this station) ==")
     for d in rarest[:5]:

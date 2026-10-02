@@ -36,10 +36,10 @@ async def main(lat: float, lon: float) -> None:
             print(f"      img={bool(det['image_url'])} audio={bool(det['audio_url'])} "
                   f"ebird={det['sp_code']}")
 
-        print(f"\n== get_species_counts(station {sid}, 1 month) ==")
-        counts = await bw.get_species_counts(sid, months=1, limit=8)
-        for sci, n in sorted(counts.items(), key=lambda kv: -kv[1])[:8]:
-            print(f"  {n:5}  {sci}")
+        print(f"\n== get_baseline_count(station {sid}, 1 month) ==")
+        counts = await bw.get_baseline_count(sid, months=1, limit=8)
+        for row in counts[:8]:
+            print(f"  {row['count']:5}  {row['bird']}")
 
 
 if __name__ == "__main__":
