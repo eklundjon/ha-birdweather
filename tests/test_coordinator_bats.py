@@ -183,6 +183,8 @@ async def test_new_bat_species_fires_new_species(hass: HomeAssistant, events) ->
     assert fired[0]["classification"] == "bat"
     assert fired[0]["behavior_code"] == "bat_feeding_buzz"
     assert fired[0]["lifetime_species_count"] == 3  # bat species, not birds
+    assert fired[0]["ebird_url"] is None
+    assert fired[0]["wikipedia_url"] == "https://en.wikipedia.org/wiki/Bat"
 
 
 async def test_watched_bat_fires_watched_species(hass: HomeAssistant, events) -> None:

@@ -75,6 +75,12 @@ async def test_new_species_event_fires(hass: HomeAssistant) -> None:
     # new_species carries the lifetime count (the blueprints read it): the
     # pre-seeded robin plus the owl just recorded this poll.
     assert events[0].data["lifetime_species_count"] == 2
+    # The documented count and reference links ride along (the new-species
+    # blueprint's eBird / Wikipedia buttons read them).
+    assert events[0].data["count"] == 1
+    assert events[0].data["ebird_url"] == "https://ebird.org/species/brdowl"
+    assert events[0].data["allaboutbirds_url"]
+    assert events[0].data["classification"] == "bird"
 
 
 async def test_watched_species_event_fires(hass: HomeAssistant) -> None:

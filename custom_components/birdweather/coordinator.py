@@ -898,6 +898,11 @@ class BirdWeatherCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 "behavior": record.get("behavior"),
                 "behavior_code": record.get("behavior_code"),
                 "behavior_confidence": record.get("behavior_confidence"),
+                "count": record.get("count"),
+                # Reference links, so automations (and the new-species
+                # blueprint's buttons) can deep-link. Bats get only Wikipedia
+                # and BirdWeather.
+                **self._links_for(record.get("species", ""), record.get("sp_code", "")),
                 **extra,
             },
         )
