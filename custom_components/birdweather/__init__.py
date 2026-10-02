@@ -78,14 +78,15 @@ async def async_unload_entry(hass: HomeAssistant, entry: BirdWeatherConfigEntry)
 
 
 async def async_remove_entry(hass: HomeAssistant, entry: BirdWeatherConfigEntry) -> None:
-    """Clean up a removed station's persistent .storage files (10 per station).
+    """Clean up a removed station's persistent .storage files.
 
-    All stores are namespaced by station id, so they're safe to delete regardless
-    of any other configured stations. (BirdWeather streams audio, so there's no
-    on-disk media cache to remove.) The card loader is shared by every station,
-    so it's removed only once no BirdWeather entries remain — by the time this
-    runs HA has already dropped the entry being removed, so an empty list means
-    it was the last.
+    That's the six current stores plus any legacy ones left by older versions
+    (see async_remove_stores). All stores are namespaced by station id, so
+    they're safe to delete regardless of any other configured stations.
+    (BirdWeather streams audio, so there's no on-disk media cache to remove.)
+    The card loader is shared by every station, so it's removed only once no
+    BirdWeather entries remain — by the time this runs HA has already dropped
+    the entry being removed, so an empty list means it was the last.
     """
     await BirdWeatherCoordinator.async_remove_stores(
         hass, entry.data[CONF_STATION_ID]
