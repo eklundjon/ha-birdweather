@@ -53,12 +53,17 @@ query stations($query: String, $first: Int, $ne: InputLocation, $sw: InputLocati
 }
 """
 
+# The API returns at most 100 detections per request, whatever `first` asks
+# for, so larger samples are fetched as cursor pages of this size.
+_DETECTION_PAGE_SIZE = 100
+
 _DETECTIONS_QUERY = """
-query stationDetections($id: ID!, $first: Int) {
+query stationDetections($id: ID!, $first: Int, $after: String) {
   station(id: $id) {
     id
     name
-    detections(first: $first) {
+    detections(first: $first, after: $after) {
+      pageInfo { hasNextPage endCursor }
       nodes {
         id
         timestamp
@@ -301,12 +306,62 @@ class BirdWeatherClient:
 
     async def get_detections(self, station_id: str, first: int = 50) -> list[dict[str, Any]]:
         """Most recent detections for a station, normalised to the common shape."""
-        data = await self._query(_DETECTIONS_QUERY, {"id": station_id, "first": first})
-        station = data.get("station")
-        if station is None:
-            raise BirdWeatherError("Station not found or not publicly accessible")
-        nodes = (station.get("detections") or {}).get("nodes") or []
+        nodes = await self._get_detection_nodes(station_id, first)
         return [_normalise_detection(n) for n in nodes]
+
+    async def _get_detection_nodes(
+        self, station_id: str, first: int
+    ) -> list[dict[str, Any]]:
+        """Up to `first` most recent detection nodes, fetched page by page.
+
+        A bounded recent sample, not complete history. Stops early on an empty
+        page, a page that adds nothing new, or a missing or repeated cursor, so
+        a misbehaving API can't loop; overlapping pages are de-duplicated by
+        detection id, so the result can hold fewer than `first` rows.
+        """
+        nodes: list[dict[str, Any]] = []
+        seen_ids: set[str] = set()
+        seen_cursors: set[str] = set()
+        after = None
+        for _ in range(max(0, math.ceil(first / _DETECTION_PAGE_SIZE))):
+            data = await self._query(
+                _DETECTIONS_QUERY,
+                {
+                    "id": station_id,
+                    "first": min(_DETECTION_PAGE_SIZE, first - len(nodes)),
+                    "after": after,
+                },
+            )
+            station = data.get("station")
+            if station is None:
+                raise BirdWeatherError("Station not found or not publicly accessible")
+            connection = station.get("detections") or {}
+            page = connection.get("nodes") or []
+            if not page:
+                break
+            previous_count = len(nodes)
+            for node in page:
+                if node.get("id") is not None:
+                    detection_id = str(node["id"])
+                    if detection_id in seen_ids:
+                        continue
+                    seen_ids.add(detection_id)
+                nodes.append(node)
+                if len(nodes) >= first:
+                    return nodes
+            page_info = connection.get("pageInfo") or {}
+            cursor = page_info.get("endCursor")
+            if (
+                len(nodes) == previous_count
+                or not page_info.get("hasNextPage")
+                or not isinstance(cursor, str)
+                or not cursor
+                or cursor in seen_cursors
+            ):
+                break
+            seen_cursors.add(cursor)
+            after = cursor
+        return nodes
 
     # --- pipeline-contract adapters --------------------------------------
     #
@@ -324,11 +379,7 @@ class BirdWeatherClient:
         `audio`, `confidence`) alongside the haikubox keys so the coordinator
         can thread them through after normalisation.
         """
-        data = await self._query(_DETECTIONS_QUERY, {"id": station_id, "first": first})
-        station = data.get("station")
-        if station is None:
-            raise BirdWeatherError("Station not found or not publicly accessible")
-        nodes = (station.get("detections") or {}).get("nodes") or []
+        nodes = await self._get_detection_nodes(station_id, first)
         out: list[dict[str, Any]] = []
         for n in nodes:
             sp = n.get("species") or {}

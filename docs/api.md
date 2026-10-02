@@ -34,7 +34,7 @@ uses the daily-history query for the recorder backfill.
 | Client method | GraphQL | When | Returns |
 |---|---|---|---|
 | `search_stations` / `get_station` / `nearby_stations` | `stations` / `station` | Config flow (discovery + validation) | public station nodes |
-| `get_raw_detections` | `station.detections(first:)` | every poll | recent detection events (newest first) |
+| `get_raw_detections` | `station.detections(first:, after:)`, up to 3 pages | every poll | recent detection events (newest first) |
 | `get_baseline_count` | `station.topSpecies(period:)` | once per day | `[{bird, count}]` rarity baseline |
 | `get_overview` | `station { today, baseline, todayTop, life, recent, hist, earliestDetectionAt }` | every poll | native per-period aggregates |
 | `get_time_of_day` | `timeOfDayDetectionCounts(period:)` | once per day | 24-bucket diel histogram |
@@ -60,7 +60,9 @@ sequenceDiagram
         Coord->>API: timeOfDayDetectionCounts (diel histogram)
     end
 
-    Coord->>API: station.detections(first: 300)
+    loop up to 3 pages of 100
+        Coord->>API: station.detections(first: 100, after: cursor)
+    end
     API-->>Coord: recent events (newest first)
     Note right of Coord: filter by dt > now - 24h, then > now - 1h<br/>for the daily / recent windows
 
@@ -103,6 +105,14 @@ timestamp, so a single fetch feeds `recent_detections`, `last_detection`,
 new-species tracking, and the 7-day rarity rollup. A busy station can exhaust the
 300-event limit inside 24 h — a future refinement could switch to a
 time-bounded query.
+
+The API returns at most 100 detections per request, whatever `first` asks for,
+so the client fetches them as cursor pages of 100 (`pageInfo { hasNextPage
+endCursor }`, then `after:`), up to three requests per poll. It stops early when
+a page is empty, adds nothing new, or comes back without a usable cursor, and it
+drops duplicate detection IDs if pages overlap, so the result can be shorter
+than 300. Before this, a single `first: 300` request quietly returned only the
+newest 100.
 
 ## Native aggregates (overview)
 
