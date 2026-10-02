@@ -12,13 +12,17 @@ Run:  python scripts/pipeline_smoke.py [station_id]
 import asyncio
 import sys
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 
 import aiohttp
 
-sys.path.insert(0, "/Users/eklundj/ha-birdweather/custom_components/birdweather")
-sys.path.insert(0, "/Users/eklundj/ha-haikubox")
+# Both repo roots go on the path; `custom_components` is a namespace package in
+# each, so both integrations import as packages. Putting the birdweather package
+# dir itself on the path would let its statistics.py shadow the stdlib module.
+_REPO = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(_REPO))
+sys.path.insert(0, str(_REPO.parent / "ha-haikubox"))
 
-from client import BirdWeatherClient  # noqa: E402
 from custom_components.haikubox.coordinator import (  # noqa: E402
     _apply_notability_scores,
     _apply_rarity_scores,
@@ -27,6 +31,8 @@ from custom_components.haikubox.coordinator import (  # noqa: E402
     _normalise_detections,
     _process_yearly_count,
 )
+
+from custom_components.birdweather.client import BirdWeatherClient  # noqa: E402
 
 RECENT_WINDOW_HOURS = 1
 NOTABILITY_WINDOW_HOURS = 24

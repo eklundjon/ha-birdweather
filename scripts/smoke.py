@@ -6,10 +6,11 @@ Defaults to a point in upstate NY (near a known PUC station).
 
 import asyncio
 import sys
+from pathlib import Path
 
 import aiohttp
 
-sys.path.insert(0, "custom_components/birdweather")
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "custom_components" / "birdweather"))
 from client import BirdWeatherClient  # noqa: E402
 
 
