@@ -43,11 +43,20 @@ def _has_bat_support(hass: HomeAssistant, device_id: str) -> bool:
     device = dr.async_get(hass).async_get(device_id)
     if device is None:
         return False
+    # Devices belong to a single config entry from 2026.8, and reading the old
+    # `config_entries` set is deprecated from 2026.10. Fall back to it on older
+    # versions, which lack `config_entry_id`.
+    entry_ids = (
+        [device.config_entry_id]
+        if hasattr(device, "config_entry_id")
+        else device.config_entries
+    )
     return any(
         (entry := hass.config_entries.async_get_entry(entry_id)) is not None
         and entry.domain == DOMAIN
         and entry.data.get(CONF_BAT_SUPPORT, DEFAULT_BAT_SUPPORT)
-        for entry_id in device.config_entries
+        for entry_id in entry_ids
+        if entry_id is not None
     )
 
 

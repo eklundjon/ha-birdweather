@@ -186,7 +186,9 @@ class BirdWeatherConfigFlow(ConfigFlow, domain=DOMAIN):
         """Change bat support (the station itself stays fixed)."""
         entry = self._get_reconfigure_entry()
         if user_input is not None:
-            return self.async_update_reload_and_abort(
+            # The entry's update listener does the reload; reloading here too is
+            # deprecated from 2026.6 and an error in 2026.12.
+            return self.async_update_and_abort(
                 entry,
                 data_updates={
                     CONF_BAT_SUPPORT: user_input.get(CONF_BAT_SUPPORT, DEFAULT_BAT_SUPPORT)

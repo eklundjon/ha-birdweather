@@ -105,7 +105,9 @@ async def test_ignores_other_device(
     assert action_events == []
 
 
-async def test_bat_activity_only_with_bat_support(hass: HomeAssistant) -> None:
+async def test_bat_activity_only_with_bat_support(
+    hass: HomeAssistant, caplog: pytest.LogCaptureFixture
+) -> None:
     entry = MockConfigEntry(domain=DOMAIN, unique_id="28811", data={CONF_BAT_SUPPORT: True})
     entry.add_to_hass(hass)
     device = dr.async_get(hass).async_get_or_create(
@@ -113,3 +115,5 @@ async def test_bat_activity_only_with_bat_support(hass: HomeAssistant) -> None:
     )
     triggers = await device_trigger.async_get_triggers(hass, device.id)
     assert {t[CONF_TYPE] for t in triggers} == set(TRIGGER_TYPES + BAT_TRIGGER_TYPES)
+    # Reading the deprecated DeviceEntry.config_entries logs a warning (2026.10+).
+    assert "DeviceEntry.config_entries" not in caplog.text

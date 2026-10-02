@@ -16,6 +16,7 @@ from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import entity_registry as er
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
+import custom_components.birdweather as integration
 from custom_components.birdweather.const import (
     CONF_BAT_SUPPORT,
     CONF_STATION_ID,
@@ -236,6 +237,36 @@ async def test_bat_sensors_follow_bat_support(hass: HomeAssistant) -> None:
 
     assert entry.state is ConfigEntryState.LOADED
     assert not _BAT_UNIQUE_IDS & _unique_ids()
+
+
+async def test_reconfigure_reloads_once(hass: HomeAssistant) -> None:
+    """Reconfiguring a loaded entry reloads it exactly once (via the update
+    listener), and the new bat support setting takes effect."""
+    entry = await _setup_entry(hass, **{CONF_BAT_SUPPORT: False})
+    result = await entry.start_reconfigure_flow(hass)
+
+    client = make_client(baseline=_BASELINE, detections=_DETECTIONS, overview=_OVERVIEW)
+    with (
+        patch("custom_components.birdweather.async_setup", return_value=True),
+        patch("custom_components.birdweather.coordinator.BirdWeatherClient", return_value=client),
+        patch.object(
+            integration, "async_setup_entry", wraps=integration.async_setup_entry
+        ) as setup_spy,
+    ):
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"], {CONF_BAT_SUPPORT: True}
+        )
+        await hass.async_block_till_done()
+
+    assert result["reason"] == "reconfigure_successful"
+    assert setup_spy.call_count == 1
+    assert entry.state is ConfigEntryState.LOADED
+    assert entry.data[CONF_BAT_SUPPORT] is True
+    registry = er.async_get(hass)
+    unique_ids = {
+        e.unique_id for e in er.async_entries_for_config_entry(registry, entry.entry_id)
+    }
+    assert _BAT_UNIQUE_IDS <= unique_ids
 
 
 async def test_existing_station_hearing_bats_gets_bat_support(hass: HomeAssistant) -> None:
