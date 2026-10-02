@@ -1,12 +1,13 @@
 blueprint:
   name: BirdWeather — New species notification
   description: >
-    Send a mobile push notification (with the bird's photo) the first time
-    your BirdWeather station ever hears a given species. Fires off the
-    integration's `new_species` device trigger, so it only alerts on genuine
-    lifetime firsts — not on a fresh install bootstrapping its history. The
-    notification includes the running lifetime species count and tap-through
-    buttons to the bird's eBird and Wikipedia pages.
+    Send a mobile push notification (with a photo) the first time your
+    BirdWeather station ever hears a given species of bird, or of bat if bat
+    support is on. Fires off the integration's `new_species` device trigger,
+    so it only alerts on genuine lifetime firsts — not on a fresh install
+    bootstrapping its history. The notification includes the running
+    lifetime species count (of birds, or of bats for a bat) and tap-through
+    buttons to the species' eBird (birds only) and Wikipedia pages.
   domain: automation
   source_url: https://github.com/eklundjon/ha-birdweather/blob/main/blueprints/automation/birdweather/new_species_notification.yaml
   author: ha-birdweather
@@ -22,7 +23,7 @@ blueprint:
       name: Device to notify
       description: >
         Device running the official Home Assistant app. It will receive the
-        push notification, including the bird's photo when one is available.
+        push notification, including a photo when one is available.
       selector:
         device:
           filter:
@@ -30,14 +31,15 @@ blueprint:
     notification_title:
       name: Notification title
       description: Title of the push notification.
-      default: New bird at the BirdWeather station! 🐦
+      default: New flying critter at the BirdWeather station!
     notification_message:
       name: Notification message
       description: >
         Body of the push notification. Available: {{ species }} (common name),
-        {{ device_name }} (the station), and {{ lifetime_species_count }} (total
-        distinct species ever heard here, including this one).
-      default: "First-ever detection of {{ species }} at {{ device_name }} — species #{{ lifetime_species_count }} at this station! 🎉"
+        {{ device_name }} (the station), {{ kind }} ("bird" or "bat"), and
+        {{ lifetime_species_count }} (distinct species of that kind ever heard
+        here, including this one).
+      default: "First-ever detection of {{ species }} at {{ device_name }}: {{ kind }} species #{{ lifetime_species_count }} at this station!"
 
 triggers:
   - trigger: device
@@ -53,6 +55,9 @@ variables:
   ebird_url: "{{ trigger.event.data.ebird_url }}"
   wikipedia_url: "{{ trigger.event.data.wikipedia_url }}"
   lifetime_species_count: "{{ trigger.event.data.lifetime_species_count }}"
+  # "bird" or "bat". Events from versions before bat support have no
+  # classification, and were always birds.
+  kind: "{{ trigger.event.data.classification | default('bird', true) }}"
 
 actions:
   - alias: Send the new-species notification
@@ -61,8 +66,9 @@ actions:
     device_id: !input notify_device
     title: !input notification_title
     message: !input notification_message
-    # The bird's photo (when available) plus tap-through action buttons to
-    # eBird / Wikipedia, built from the event's reference-link fields.
+    # The photo (when available) plus tap-through action buttons to eBird /
+    # Wikipedia, built from the event's reference-link fields (bats have no
+    # eBird link, so they get Wikipedia only).
     data: >
       {% set actions = [] %}
       {% if ebird_url %}{% set actions = actions + [{'action': 'URI', 'title': 'Open in eBird', 'uri': ebird_url}] %}{% endif %}
