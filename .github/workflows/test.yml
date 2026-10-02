@@ -51,23 +51,29 @@ jobs:
         include:
           # The declared minimum (hacs.json) and the latest. Each PHACC release
           # pins one exact Home Assistant version, so pinning PHACC pins HA.
+          # The minimum is pinned here and never moves. The latest is pinned in
+          # requirements_ha_latest.txt, which Dependabot keeps current. Each
+          # job's Python must satisfy its PHACC's floor (Home Assistant 2026.5+
+          # needs 3.14).
           - name: "HA 2025.4 (minimum)"
-            phacc: "0.13.236"   # Home Assistant 2025.4.4
+            python: "3.13"
+            phacc: "pytest-homeassistant-custom-component==0.13.236"   # HA 2025.4.4
           - name: "HA latest"
-            phacc: "0.13.316"   # Home Assistant 2026.2.3
+            python: "3.14"
+            phacc: "-r requirements_ha_latest.txt"
     steps:
       - uses: actions/checkout@v7
 
       - uses: actions/setup-python@v7
         with:
-          python-version: "3.13"
+          python-version: ${{ matrix.python }}
           cache: pip
 
       - name: Install test dependencies
         run: |
           # Pin PHACC (and therefore Home Assistant) first; requirements_test
           # then adds the integration's runtime deps without upgrading it.
-          pip install "pytest-homeassistant-custom-component==${{ matrix.phacc }}"
+          pip install ${{ matrix.phacc }}
           pip install -r requirements_test.txt
 
       - name: Run tests

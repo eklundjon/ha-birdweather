@@ -1,0 +1,13 @@
+# The Home Assistant version CI's "HA latest" job tests against.
+#
+# Each pytest-homeassistant-custom-component (PHACC) release pins one exact
+# Home Assistant version, so pinning PHACC pins HA. This lives in its own file,
+# rather than in .github/workflows/test.yml, so Dependabot bumps it with each
+# new PHACC release (see dependabot.yml); the bump PR is where a new Home
+# Assistant release first gets tested. The 2025.4 minimum stays pinned in
+# test.yml, out of Dependabot's reach, on purpose.
+#
+# PHACC's own Python floor moves with Home Assistant's. If a bump fails to
+# install because it needs a newer Python, raise the "HA latest" job's python
+# in test.yml in the same PR.
+pytest-homeassistant-custom-component==0.13.367

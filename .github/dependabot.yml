@@ -23,12 +23,14 @@ updates:
       actions:
         patterns: ["*"]
 
-  # Python test dependencies (requirements_test.txt).
+  # Python test dependencies: requirements_test.txt and requirements_ha_latest.txt.
   #
-  # Most entries there are deliberately unpinned (PHACC, and therefore Home
-  # Assistant, are pinned per-job in test.yml instead), so in practice the only
-  # thing Dependabot bumps here is the ruff pin — which the lint job now reads
-  # straight out of requirements_test.txt, so a bump updates CI in the same PR.
+  # Most entries in requirements_test.txt are deliberately unpinned, so in
+  # practice Dependabot bumps two pins: ruff (which the lint job reads straight
+  # out of requirements_test.txt, so a bump updates CI in the same PR) and PHACC
+  # in requirements_ha_latest.txt, which moves CI's "HA latest" job to each new
+  # Home Assistant release. PHACC gets its own group so a Home Assistant bump
+  # that breaks something doesn't hold up the ruff bump.
   - package-ecosystem: pip
     directory: "/"
     schedule:
@@ -37,5 +39,7 @@ updates:
     commit-message:
       prefix: chore
     groups:
+      home-assistant:
+        patterns: ["pytest-homeassistant-custom-component"]
       python:
         patterns: ["*"]
