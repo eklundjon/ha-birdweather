@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import inspect
 import logging
 from datetime import UTC, date, datetime, timedelta
 from typing import Any
@@ -74,6 +75,19 @@ from .normalize import (
 from .statistics import async_import_history_statistics
 
 _LOGGER = logging.getLogger(__name__)
+
+# UpdateFailed(retry_after=...) delays the next refresh (Home Assistant 2025.12+).
+# Older versions don't accept the argument, so check once.
+_UPDATE_FAILED_TAKES_RETRY_AFTER = (
+    "retry_after" in inspect.signature(UpdateFailed.__init__).parameters
+)
+
+
+def _update_failed(message: str, retry_after: float | None) -> UpdateFailed:
+    """UpdateFailed carrying retry_after where this Home Assistant supports it."""
+    if retry_after is not None and _UPDATE_FAILED_TAKES_RETRY_AFTER:
+        return UpdateFailed(message, retry_after=retry_after)
+    return UpdateFailed(message)
 
 
 def async_get_entry_device(
@@ -369,7 +383,9 @@ class BirdWeatherCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 self.station_id, first=DETECTION_FETCH_LIMIT, classifications=[API_BIRDS]
             )
         except (aiohttp.ClientError, BirdWeatherError) as err:
-            raise UpdateFailed(f"Error communicating with BirdWeather API: {err}") from err
+            raise _update_failed(
+                f"Error communicating with BirdWeather API: {err}", self._retry_after(err)
+            ) from err
 
         # Bats come from their own feed, so they can't crowd birds out of the
         # bird feed's limit (or vice versa). Best-effort: a blip leaves the bat
@@ -916,6 +932,18 @@ class BirdWeatherCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         return sorted(
             sp for sp in self._seen_species if self._bat_support or not self._is_bat(sp)
         )
+
+    def _retry_after(self, err: Exception) -> float | None:
+        """The API's Retry-After for a failed request, when it's worth honoring.
+
+        Only a delay longer than the poll interval counts: Home Assistant uses
+        retry_after as the next interval, so a shorter one would poll sooner.
+        """
+        seconds = getattr(err, "retry_after", None)
+        interval = self.update_interval
+        if seconds is None or (interval and seconds <= interval.total_seconds()):
+            return None
+        return seconds
 
     def _fire_event(self, trigger_type: str, record: dict[str, Any], **extra: Any) -> None:
         device = async_get_entry_device(
