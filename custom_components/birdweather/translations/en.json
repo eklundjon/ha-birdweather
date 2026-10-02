@@ -12,6 +12,26 @@
           "search": "Leave the station empty and submit to search by name instead of by location.",
           "station_id": "Choose a station, or paste its numeric station ID."
         }
+      },
+      "bats": {
+        "title": "Bat support",
+        "description": "Does {station} hear bats? Bat-edition PUCs do, and this is ticked for them.",
+        "data": {
+          "bat_support": "Bat support"
+        },
+        "data_description": {
+          "bat_support": "Bats get their own sensors and events, and bird counts never include them. You can change this later with Reconfigure."
+        }
+      },
+      "reconfigure": {
+        "title": "Reconfigure {station}",
+        "description": "Change bat support for this station.",
+        "data": {
+          "bat_support": "Bat support"
+        },
+        "data_description": {
+          "bat_support": "Bats get their own sensors and events. Turning this off removes those and ignores bats entirely. Bird counts never include bats either way."
+        }
       }
     },
     "error": {
@@ -20,7 +40,8 @@
       "no_selection": "Choose a station from the list, paste a station ID, or enter a search term."
     },
     "abort": {
-      "already_configured": "This BirdWeather station is already configured"
+      "already_configured": "This BirdWeather station is already configured",
+      "reconfigure_successful": "Re-configuration was successful"
     }
   },
   "options": {
@@ -71,15 +92,20 @@
     "trigger_type": {
       "new_species": "New species detected",
       "unusual_visitor": "Unusual visitor detected",
-      "watched_species": "Watched species detected"
+      "watched_species": "Watched species detected",
+      "bat_activity": "Bat activity started"
     }
   },
   "entity": {
     "sensor": {
       "recent_detections": { "name": "Recent detections (1 h)" },
       "last_detection": { "name": "Last detection" },
+      "last_bird_detection": { "name": "Last bird detection" },
+      "last_bat_detection": { "name": "Last bat detection" },
       "daily_count": { "name": "Total detections (24 h)" },
       "daily_top_species": { "name": "Top species (24 h)" },
+      "bat_count_today": { "name": "Bat detections (24 h)" },
+      "bats_today": { "name": "Bats (24 h)" },
       "notable_species": { "name": "Notable species" },
       "new_species": { "name": "New species" },
       "yearly_top_species": { "name": "Top species (baseline)" },

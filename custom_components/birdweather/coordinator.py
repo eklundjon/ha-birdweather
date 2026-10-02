@@ -12,12 +12,15 @@ from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.storage import Store
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
-from .client import BirdWeatherClient, BirdWeatherError
+from .client import API_BATS, API_BIRDS, BAT, BIRD, BirdWeatherClient, BirdWeatherError
 from .const import (
     ACTIVITY_BASELINE_DAYS,
+    BAT_ACTIVITY_QUIET_MINUTES,
+    BAT_FETCH_LIMIT,
     CONF_ABSENCE_DAYS,
     CONF_ALERT_MIN_CONFIDENCE,
     CONF_AUDIO_ENABLED,
+    CONF_BAT_SUPPORT,
     CONF_FEED_MIN_CONFIDENCE,
     CONF_NEW_SPECIES_WINDOW_DAYS,
     CONF_NOTABLE_RARITY_WEIGHT,
@@ -32,6 +35,7 @@ from .const import (
     DEFAULT_ABSENCE_DAYS,
     DEFAULT_ALERT_MIN_CONFIDENCE,
     DEFAULT_AUDIO_ENABLED,
+    DEFAULT_BAT_SUPPORT,
     DEFAULT_FEED_MIN_CONFIDENCE,
     DEFAULT_NOTABLE_RARITY_WEIGHT,
     DEFAULT_SCAN_INTERVAL,
@@ -45,6 +49,7 @@ from .const import (
     NOTABILITY_WINDOW_HOURS,
     RARITY_PERIOD_MONTHS,
     RECENT_WINDOW_HOURS,
+    TRIGGER_BAT_ACTIVITY,
     TRIGGER_NEW_SPECIES,
     TRIGGER_UNUSUAL_VISITOR,
     TRIGGER_WATCHED_SPECIES,
@@ -81,6 +86,7 @@ _STORE_SUFFIXES = (
     "seven_day",
     "recent_events",
     "species_meta",
+    "last_by_class",
 )
 
 # Legacy per-station stores from earlier versions: the five cold maps now folded
@@ -156,6 +162,18 @@ class BirdWeatherCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         # "notable observed in the last 24 h", so it drains with its window.
         self._event_buffer: list[dict[str, Any]] = []
 
+        # Bat support (entry data, changed via reconfigure, which reloads). Off:
+        # bats aren't even fetched. On: they come from their own class-filtered
+        # feed and get their own sensors and events. The bird feed and every
+        # bird figure are filtered to BirdWeather's avian class either way.
+        self._bat_support: bool = entry.data.get(CONF_BAT_SUPPORT, DEFAULT_BAT_SUPPORT)
+        # The newest bird and newest bat event, persisted on their own: the
+        # shared event buffer can be a single night of bats, so deriving
+        # last_bird_detection from it would lose the bird after a restart.
+        self._last_by_class: dict[str, dict[str, Any] | None] = {BIRD: None, BAT: None}
+        # Bats in the recent window on the previous poll (watched_species edge).
+        self._prev_recent_bats: set[str] | None = None
+
         # Persistent stores
         self._store           = Store(hass, _STORE_VERSION, f"{DOMAIN}.{station_id}.seen_species")
         self._last_seen_store  = Store(hass, _STORE_VERSION, f"{DOMAIN}.{station_id}.last_seen")
@@ -169,6 +187,7 @@ class BirdWeatherCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         # memory; only persistence is consolidated. (Migrated from the old
         # per-map stores on first load — see _load_stores.)
         self._meta_store       = Store(hass, _STORE_VERSION, f"{DOMAIN}.{station_id}.species_meta")
+        self._by_class_store   = Store(hass, _STORE_VERSION, f"{DOMAIN}.{station_id}.last_by_class")
 
         # In-memory store state
         self._seen_species: dict[str, str] = {}       # species → first_seen ISO
@@ -180,6 +199,11 @@ class BirdWeatherCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._image_attr: dict[str, dict[str, Any]] = {}
         # sp_code → {ebird_url, wikipedia_url} (upstream URLs BirdWeather supplies)
         self._links_cache: dict[str, dict[str, Any]] = {}
+        # Bats seen, by name → {scientific_name, image_url, wikipedia_url,
+        # birdweather_url, photo attribution}. Bats have no eBird code, which is
+        # what the maps above are keyed by, so they keep their own. Also how a
+        # name in _seen_species is known to be a bat.
+        self._bats: dict[str, dict[str, Any]] = {}
         self._baseline_items: list[dict[str, Any]] = []
         self._seven_day_data: dict[str, list] = {}
 
@@ -220,6 +244,8 @@ class BirdWeatherCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         play button; _with_links (applied by the caller) stamps reference links."""
         view = [dict(e) for e in self._event_buffer]
         for e in view:
+            # Events buffered before bat support existed carry no classification.
+            e.setdefault("classification", BIRD)
             img = self._image_urls.get(e.get("sp_code"))
             if img:
                 e["image_url"] = img
@@ -229,13 +255,14 @@ class BirdWeatherCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         return view
 
     async def _save_meta(self) -> None:
-        """Persist the five cold per-species maps as one species_meta store."""
+        """Persist the cold per-species maps as one species_meta store."""
         await self._meta_store.async_save({
             "sp_codes": self._sp_codes,
             "sci_names": self._sci_names,
             "image_urls": self._image_urls,
             "image_attr": self._image_attr,
             "links": self._links_cache,
+            "bats": self._bats,
         })
 
     @staticmethod
@@ -293,10 +320,26 @@ class BirdWeatherCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
         try:
             raw_all = await self._client.get_raw_detections(
-                self.station_id, first=DETECTION_FETCH_LIMIT
+                self.station_id, first=DETECTION_FETCH_LIMIT, classifications=[API_BIRDS]
             )
         except (aiohttp.ClientError, BirdWeatherError) as err:
             raise UpdateFailed(f"Error communicating with BirdWeather API: {err}") from err
+
+        # Bats come from their own feed, so they can't crowd birds out of the
+        # bird feed's limit (or vice versa). Best-effort: a blip leaves the bat
+        # data as it was rather than failing the poll.
+        bat_all: dict[str, Any] = {"detections": []}
+        if self._bat_support:
+            try:
+                bat_all = await self._client.get_raw_detections(
+                    self.station_id, first=BAT_FETCH_LIMIT, classifications=[API_BATS]
+                )
+            except (aiohttp.ClientError, BirdWeatherError) as err:
+                _LOGGER.warning("Could not fetch bat detections: %s", err)
+        # No audio for bats yet: their ultrasonic clips need processing to be
+        # audible, which is planned separately.
+        for item in bat_all["detections"]:
+            item["audio"] = None
 
         # Feed min-confidence: drop low-confidence "maybe" events before any
         # windowing, so every feed-derived sensor + alert sees only the kept
@@ -310,6 +353,7 @@ class BirdWeatherCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             raw_all["detections"] = _filter_by_confidence(
                 raw_all.get("detections", []), feed_min
             )
+            bat_all["detections"] = _filter_by_confidence(bat_all["detections"], feed_min)
 
         now = datetime.now(UTC)
         # The fetch returns the most-recent N events regardless of age; carve
@@ -320,6 +364,8 @@ class BirdWeatherCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         )
         daily_raw = {"detections": _filter_by_dt(raw_all, now - timedelta(hours=DAILY_WINDOW_HOURS))}
         recent_raw = {"detections": _filter_by_dt(daily_raw, now - timedelta(hours=recent_hours))}
+        bat_daily_raw = {"detections": _filter_by_dt(bat_all, now - timedelta(hours=DAILY_WINDOW_HOURS))}
+        bat_recent_raw = {"detections": _filter_by_dt(bat_daily_raw, now - timedelta(hours=recent_hours))}
 
         # Master switch for "play the call" (opt-in; off by default). When off,
         # audio_url is never surfaced, so the cards render no play button.
@@ -386,6 +432,8 @@ class BirdWeatherCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 last_seen_dirty = True
 
         seen_dirty = False
+        # Captured before the bootstrap below seeds it, so bats seed too.
+        fresh_install = not self._seen_species
 
         # Fresh-install bootstrap for _seen_species from the 24h window.
         if not self._seen_species and daily_count:
@@ -415,6 +463,34 @@ class BirdWeatherCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 )
                 seen_dirty = True
 
+        # Bats: remember each one's name, photo and links (that's also how a
+        # name is known to be a bat), track last-seen, and on a fresh install
+        # seed the first-seen log like the birds above.
+        for item in bat_daily_raw["detections"]:
+            sp = item.get("cn")
+            if not sp:
+                continue
+            meta = {
+                "scientific_name": item.get("sn") or "",
+                "image_url": item.get("image"),
+                "wikipedia_url": item.get("wikipedia_url"),
+                "birdweather_url": item.get("birdweather_url"),
+                **{k: item.get(k) for k in _ATTR_KEYS},
+            }
+            if self._bats.get(sp) != meta:
+                self._bats[sp] = meta
+                meta_dirty = True
+        bat_first_seen = _first_seen_per_species(bat_daily_raw) if fresh_install else {}
+        for d in _normalise_detections(bat_daily_raw, audio_enabled=False):
+            sp = d["species"]
+            ts = d.get("last_seen")
+            if ts and ts > self._last_seen.get(sp, ""):
+                self._last_seen[sp] = ts
+                last_seen_dirty = True
+            if fresh_install and sp not in self._seen_species:
+                self._seen_species[sp] = bat_first_seen.get(sp) or ts or today.isoformat()
+                seen_dirty = True
+
         if last_seen_dirty:
             await self._last_seen_store.async_save(self._last_seen)
 
@@ -425,6 +501,15 @@ class BirdWeatherCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             if sp not in self._seen_species:
                 self._seen_species[sp] = d.get("last_seen") or today.isoformat()
                 newly_seen.add(sp)
+                seen_dirty = True
+        # The same for bats in the recent window (empty without bat support).
+        bat_recent = _normalise_detections(bat_recent_raw, audio_enabled=False)
+        newly_seen_bats: set[str] = set()
+        for d in bat_recent:
+            sp = d["species"]
+            if sp and sp not in self._seen_species:
+                self._seen_species[sp] = d.get("last_seen") or today.isoformat()
+                newly_seen_bats.add(sp)
                 seen_dirty = True
         if seen_dirty:
             await self._store.async_save(self._seen_species)
@@ -445,8 +530,10 @@ class BirdWeatherCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         # (per-event, newest-first, capped), NOT the live feed — so "the last
         # detection" persists across restarts and outages (#62). Build this
         # poll's events, merge the new ones in, and persist when it changes.
+        # With bat support on, the buffer (and so last_detection) takes birds
+        # and bats alike; each event carries its classification.
         poll_events = _build_recent_events(
-            daily_raw,
+            {"detections": daily_raw["detections"] + bat_daily_raw["detections"]},
             self._baseline_ranks,
             self._baseline_species_count,
             self._image_urls.get,
@@ -456,7 +543,24 @@ class BirdWeatherCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         if self._merge_event_buffer(poll_events):
             await self._events_store.async_save(self._event_buffer)
 
+        # The newest bird and bats, each from its own feed: the mixed list above
+        # is capped at the newest events, which on a busy morning are all birds
+        # (and on a busy night all bats).
+        bird_head = _build_recent_events(
+            daily_raw, self._baseline_ranks, self._baseline_species_count,
+            self._image_urls.get, 1, audio_enabled,
+        )
+        bat_events = _build_recent_events(
+            bat_daily_raw, self._baseline_ranks, self._baseline_species_count,
+            self._image_urls.get, LAST_DETECTION_EVENT_LIMIT, False,
+        )
+        prior_bat = self._last_by_class[BAT]
+        if self._update_last_by_class(bird_head + bat_events):
+            await self._by_class_store.async_save(self._last_by_class)
+
         self._fire_detection_events(detections, newly_seen, prior_last_seen)
+        if self._bat_support:
+            self._fire_bat_events(bat_recent, newly_seen_bats, bat_events, prior_bat)
 
         # Native per-period aggregates (activity / diversity / new-species /
         # history). Best-effort: a blip here leaves those sensors unknown rather
@@ -545,7 +649,7 @@ class BirdWeatherCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             "new_detections": _ranked(self._with_links(self._build_new_species_history())),
             "new_detection": self._build_last_new_species(),
             "lifetime_species_count": (
-                overview.get("lifetime_species") or len(self._seen_species)
+                overview.get("lifetime_species") or self.lifetime_species_count
             ),
             "yearly_top_species": self._with_links(self._build_baseline_top()),
             "rarest_species": _ranked(self._with_links(seven_day_rare)),
@@ -555,6 +659,15 @@ class BirdWeatherCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             # chart card + the peak hour for the "Peak activity hour" sensor.
             "hourly_activity": self._diel_station or None,
             "peak_activity_hour": _peak_hour(self._diel_station),
+            # Bat sensors (only created with bat support on; the keys are always
+            # present so turning it on needs no other change).
+            "last_bird_detection": self._class_head(BIRD),
+            "last_bat_detection": self._class_head(BAT),
+            "bat_today_total": overview.get("bat_today_total", 0) if self._bat_support else 0,
+            "bats_today": (
+                _ranked(self._with_links(self._build_bats_today(overview)))
+                if self._bat_support else []
+            ),
         }
 
     # ------------------------------------------------------------------
@@ -590,7 +703,7 @@ class BirdWeatherCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 self._fire_event(
                     TRIGGER_NEW_SPECIES,
                     by_species[sp],
-                    lifetime_species_count=len(self._seen_species),
+                    lifetime_species_count=self.lifetime_species_count,
                 )
 
         if self._prev_recent_species is not None:
@@ -623,6 +736,124 @@ class BirdWeatherCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
         self._prev_recent_species = current_recent
 
+    def _fire_bat_events(
+        self,
+        bat_recent: list[dict[str, Any]],
+        newly_seen_bats: set[str],
+        bat_events: list[dict[str, Any]],
+        prior_bat: dict[str, Any] | None,
+    ) -> None:
+        """Fire this poll's bat events: new_species and watched_species exactly
+        as for birds, and bat_activity when bats are heard after at least
+        BAT_ACTIVITY_QUIET_MINUTES without one. Bats aren't rarity-ranked, so
+        there's no unusual_visitor for them. `bat_events` is this poll's bat
+        events; `prior_bat` is the newest bat event as it was before this poll.
+        Identification confidence gates them like bird alerts."""
+        alert_min = self.config_entry.options.get(
+            CONF_ALERT_MIN_CONFIDENCE, DEFAULT_ALERT_MIN_CONFIDENCE
+        ) / 100.0
+
+        def _alertable(record: dict[str, Any]) -> bool:
+            if alert_min <= 0:
+                return True
+            c = record.get("confidence")
+            return isinstance(c, (int, float)) and c >= alert_min
+
+        by_species = {d["species"]: d for d in bat_recent if d.get("species")}
+        bat_species_seen = sum(1 for sp in self._seen_species if self._is_bat(sp))
+        for sp in newly_seen_bats:
+            if _alertable(by_species[sp]):
+                self._fire_event(
+                    TRIGGER_NEW_SPECIES, by_species[sp], lifetime_species_count=bat_species_seen
+                )
+
+        current = set(by_species)
+        watched = self._watched_species()
+        if watched and self._prev_recent_bats is not None:
+            for sp in current - self._prev_recent_bats:
+                if sp.casefold() in watched and _alertable(by_species[sp]):
+                    self._fire_event(TRIGGER_WATCHED_SPECIES, by_species[sp])
+        self._prev_recent_bats = current
+
+        # No previous bat (first run, or bats newly enabled): nothing to measure
+        # a quiet spell against, so this poll only establishes the baseline.
+        prior_dt = _parse_dt(prior_bat.get("last_seen")) if prior_bat else None
+        if prior_dt is None:
+            return
+        new_bats = [
+            ev for ev in bat_events
+            if (dt := _parse_dt(ev.get("last_seen"))) is not None and dt > prior_dt
+        ]
+        if not new_bats:
+            return
+        first = min(_parse_dt(ev["last_seen"]) for ev in new_bats)
+        quiet = first - prior_dt
+        if quiet >= timedelta(minutes=BAT_ACTIVITY_QUIET_MINUTES):
+            newest = max(new_bats, key=lambda ev: _parse_dt(ev["last_seen"]))
+            if _alertable(newest):
+                self._fire_event(
+                    TRIGGER_BAT_ACTIVITY,
+                    newest,
+                    count=len(new_bats),
+                    quiet_minutes=int(quiet.total_seconds() // 60),
+                )
+
+    def _update_last_by_class(self, events: list[dict[str, Any]]) -> bool:
+        """Keep the newest bird and newest bat event, given candidates tagged
+        with their classification. Returns whether either changed (→ persist)."""
+        changed = False
+        for cls in (BIRD, BAT):
+            stored = self._last_by_class[cls]
+            stored_dt = _parse_dt(stored.get("last_seen")) if stored else None
+            for ev in events:
+                if ev.get("classification", BIRD) != cls:
+                    continue
+                dt = _parse_dt(ev.get("last_seen"))
+                if dt is not None and (stored_dt is None or dt > stored_dt):
+                    stored = dict(ev)
+                    stored_dt = dt
+                    changed = True
+            self._last_by_class[cls] = stored
+        return changed
+
+    def _class_head(self, cls: str) -> dict[str, Any] | None:
+        """Display copy of the newest bird or bat event (fresh image, links)."""
+        rec = self._last_by_class[cls]
+        if rec is None:
+            return None
+        rec = dict(rec)
+        img = self._image_urls.get(rec.get("sp_code")) or (
+            self._bats.get(rec.get("species"), {}).get("image_url")
+        )
+        if img:
+            rec["image_url"] = img
+        return self._with_links([rec])[0]
+
+    def _build_bats_today(self, overview: dict[str, Any]) -> list[dict[str, Any]]:
+        """Today's bats by true detection count (BirdWeather's bat-filtered
+        topSpecies), the bat counterpart of daily_top_species — without rarity,
+        which is a bird measure. Behavior comes from each bat's latest event."""
+        latest = {
+            e.get("species"): e
+            for e in reversed(self._event_buffer)
+            if e.get("classification") == BAT
+        }
+        if (head := self._last_by_class[BAT]) is not None:
+            latest[head.get("species")] = head
+        result = []
+        for rec in overview.get("bat_today_top") or []:
+            ev = latest.get(rec["species"]) or {}
+            result.append({
+                **rec,
+                "last_seen": self._last_seen.get(rec["species"]),
+                **{k: ev.get(k) for k in ("behavior", "behavior_code", "behavior_confidence")},
+            })
+        return result
+
+    def _is_bat(self, species: str) -> bool:
+        """Whether a name in the first-seen log is a bat."""
+        return species in self._bats
+
     def _watched_species(self) -> set[str]:
         """Case-folded set of common names to watch, from the options flow:
         the pick-list selections plus the free-text list (one name per line)."""
@@ -634,8 +865,11 @@ class BirdWeatherCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     @property
     def known_species(self) -> list[str]:
         """Species this station has been seen to detect (for the watch-list
-        picker in the options flow), sorted alphabetically."""
-        return sorted(self._seen_species)
+        picker in the options flow), sorted alphabetically. Bats only with bat
+        support on."""
+        return sorted(
+            sp for sp in self._seen_species if self._bat_support or not self._is_bat(sp)
+        )
 
     def _fire_event(self, trigger_type: str, record: dict[str, Any], **extra: Any) -> None:
         device = dr.async_get(self.hass).async_get_device(
@@ -650,6 +884,7 @@ class BirdWeatherCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 "station_id": self.station_id,
                 "device_name": self.device_name,
                 "type": trigger_type,
+                "classification": record.get("classification") or BIRD,
                 "species": record.get("species"),
                 "scientific_name": record.get("scientific_name"),
                 "sp_code": record.get("sp_code"),
@@ -660,6 +895,9 @@ class BirdWeatherCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 "last_seen": record.get("last_seen"),
                 "rarity_score": record.get("rarity_score"),
                 "yearly_rank": record.get("yearly_rank"),
+                "behavior": record.get("behavior"),
+                "behavior_code": record.get("behavior_code"),
+                "behavior_confidence": record.get("behavior_confidence"),
                 **extra,
             },
         )
@@ -677,6 +915,12 @@ class BirdWeatherCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         yearly    = await self._yearly_store.async_load()
         seven_day = await self._seven_day_store.async_load()
         events    = await self._events_store.async_load()
+        by_class  = await self._by_class_store.async_load()
+        if isinstance(by_class, dict):
+            for cls in (BIRD, BAT):
+                rec = by_class.get(cls)
+                if isinstance(rec, dict) and rec.get("last_seen"):
+                    self._last_by_class[cls] = rec
 
         self._seen_species   = seen      if isinstance(seen, dict)      else {}
         self._last_seen      = last_seen if isinstance(last_seen, dict) else {}
@@ -706,6 +950,7 @@ class BirdWeatherCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._image_urls  = _d("image_urls")
         self._image_attr  = _d("image_attr")
         self._links_cache = _d("links")
+        self._bats        = _d("bats")
 
         if migrated:
             await self._save_meta()
@@ -825,7 +1070,18 @@ class BirdWeatherCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         the eBird code respectively). eBird falls back to a template if the
         upstream URL isn't cached yet. BirdWeather's species page has no template
         (it's a BirdWeather-only page), so it's only present once cached from the
-        feed."""
+        feed. Bats get only their Wikipedia and BirdWeather pages: eBird, All
+        About Birds and Macaulay Library are bird references."""
+        if bat := self._bats.get(species):
+            return {
+                "ebird_url": None,
+                "wikipedia_url": bat.get("wikipedia_url"),
+                "allaboutbirds_url": None,
+                "macaulay_url": None,
+                "birdweather_url": bat.get("birdweather_url"),
+                "alpha": None,
+                "alpha6": None,
+            }
         cached = self._links_cache.get(sp_code) or {}
         return {
             "ebird_url": cached.get("ebird_url") or _ebird_url(sp_code),
@@ -866,8 +1122,12 @@ class BirdWeatherCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     def _build_new_species_history(self) -> list[dict[str, Any]]:
         if not self._seen_species:
             return []
+        # A bird list: bats' first sightings fire new_species but aren't
+        # listed here.
         sorted_items = sorted(
-            self._seen_species.items(), key=lambda kv: kv[1] or "", reverse=True
+            ((sp, fs) for sp, fs in self._seen_species.items() if not self._is_bat(sp)),
+            key=lambda kv: kv[1] or "",
+            reverse=True,
         )[:NEW_SPECIES_HISTORY_LIMIT]
         denom = max(self._baseline_species_count, 1)
         result: list[dict[str, Any]] = []
@@ -934,4 +1194,5 @@ class BirdWeatherCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
     @property
     def lifetime_species_count(self) -> int:
-        return len(self._seen_species)
+        """Bird species ever recorded (the first-seen log also holds bats)."""
+        return sum(1 for sp in self._seen_species if not self._is_bat(sp))

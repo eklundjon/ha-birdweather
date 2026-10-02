@@ -12,6 +12,8 @@ from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.birdweather import device_trigger
 from custom_components.birdweather.const import (
+    BAT_TRIGGER_TYPES,
+    CONF_BAT_SUPPORT,
     CONF_STATION_ID,
     DOMAIN,
     EVENT_BIRDWEATHER,
@@ -101,3 +103,13 @@ async def test_ignores_other_device(
     )
     await hass.async_block_till_done()
     assert action_events == []
+
+
+async def test_bat_activity_only_with_bat_support(hass: HomeAssistant) -> None:
+    entry = MockConfigEntry(domain=DOMAIN, unique_id="28811", data={CONF_BAT_SUPPORT: True})
+    entry.add_to_hass(hass)
+    device = dr.async_get(hass).async_get_or_create(
+        config_entry_id=entry.entry_id, identifiers={(DOMAIN, "28811")}
+    )
+    triggers = await device_trigger.async_get_triggers(hass, device.id)
+    assert {t[CONF_TYPE] for t in triggers} == set(TRIGGER_TYPES + BAT_TRIGGER_TYPES)

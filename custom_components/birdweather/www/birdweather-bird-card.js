@@ -27,6 +27,15 @@ function _bandLabel(band) {
   return { low: "Low", medium: "Medium", high: "High" }[band] ?? "";
 }
 
+// Bat behavior → display label: BirdWeather's behavior plus how sure its
+// classifier was, e.g. "Search/Clutter · 60%". Only BirdWeather reports
+// behavior (for bats), so on other records this never renders.
+function _behaviorLabel(record) {
+  const c = record.behavior_confidence;
+  const pct = typeof c === "number" && c >= 0 && c <= 1 ? ` · ${Math.round(c * 100)}%` : "";
+  return `${record.behavior}${pct}`;
+}
+
 // Editor entity-picker filter: only show BirdWeather sensors that expose
 // a `detections` list (so the bird/list cards have something to render).
 // Excludes daily_count, which is a numeric-only total. Returns true
@@ -569,6 +578,8 @@ class BirdWeatherBirdCard extends HTMLElement {
           scientific_name: top.scientific_name,
           last_seen: top.last_seen,
           confidence_band: top.confidence_band,
+          behavior: top.behavior,
+          behavior_confidence: top.behavior_confidence,
           audio_url: top.audio_url,
           image_credit: top.image_credit,
           image_credit_url: top.image_credit_url,
@@ -770,9 +781,14 @@ class BirdWeatherBirdCard extends HTMLElement {
         .confidence.conf-low .dot { background: var(--error-color, #e53935); }
 
         /* Wide layout: drop scientific + confidence / shrink fonts when short */
+        .behavior {
+          font-size: clamp(0.72rem, 1.8cqw + 1cqh, 1.05rem);
+          color: var(--secondary-text-color);
+        }
         @container (aspect-ratio > 3/2) and (max-height: 71px) {
           .scientific,
-          .confidence { display: none; }
+          .confidence,
+          .behavior { display: none; }
         }
         @container (aspect-ratio > 3/2) and (max-height: 51px) {
           .species { font-size: 0.95em; }
@@ -892,6 +908,9 @@ class BirdWeatherBirdCard extends HTMLElement {
                 ${this._config.show_confidence !== false && bird.confidence_band
                   ? `<div class="confidence conf-${_esc(bird.confidence_band)}" title="Detection confidence"><span class="dot"></span>${_esc(_bandLabel(bird.confidence_band))} confidence</div>`
                   : ""}
+                ${bird.behavior
+                  ? `<div class="behavior" title="Bat behavior">${_esc(_behaviorLabel(bird))}</div>`
+                  : ""}
               </div>
             </div>
           `}
@@ -983,7 +1002,7 @@ if (!customElements.get("birdweather-bird-card")) {
     window.customCards.push({
       type: "birdweather-bird-card",
       name: "BirdWeather Bird Card",
-      description: "Displays a BirdWeather bird detection with photo, species name, and timestamp.",
+      description: "Displays a BirdWeather bird or bat detection with photo, species name, and timestamp.",
     });
   }
 }

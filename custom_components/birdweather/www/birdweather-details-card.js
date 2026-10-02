@@ -26,6 +26,15 @@ function _bandLabel(band) {
   return { low: "Low", medium: "Medium", high: "High" }[band] ?? "";
 }
 
+// Bat behavior → display label: BirdWeather's behavior plus how sure its
+// classifier was, e.g. "Search/Clutter · 60%". Only BirdWeather reports
+// behavior (for bats), so on other records this never renders.
+function _behaviorLabel(record) {
+  const c = record.behavior_confidence;
+  const pct = typeof c === "number" && c >= 0 && c <= 1 ? ` · ${Math.round(c * 100)}%` : "";
+  return `${record.behavior}${pct}`;
+}
+
 // Render a 24-bucket hourly array (the integration's `hourly` diel field) as a
 // Unicode sparkline, one block per hour, scaled to the array's own max. Returns
 // "" for an empty/all-zero array.
@@ -555,6 +564,7 @@ class BirdWeatherBirdListCard extends HTMLElement {
                         ${this._config.show_confidence !== false && item.confidence_band
                           ? `<div class="metric conf-${_esc(item.confidence_band)}" title="Detection confidence"><span class="conf-dot"></span><strong>${_esc(_bandLabel(item.confidence_band))}</strong> confidence</div>`
                           : ""}
+                        ${item.behavior ? `<div class="metric" title="Bat behavior"><strong>${_esc(_behaviorLabel(item))}</strong></div>` : ""}
                         ${item.alpha ? `<div class="metric" title="Alpha banding code"><strong>${_esc(item.alpha)}</strong></div>` : ""}
                       </div>
                       ${this._config.show_activity !== false && Array.isArray(item.hourly) && item.hourly.some((v) => v > 0)
@@ -1082,7 +1092,7 @@ if (!customElements.get("birdweather-bird-list-card")) {
     window.customCards.push({
       type: "birdweather-bird-list-card",
       name: "BirdWeather Bird List Card",
-      description: "Ranked bird species list — works with yearly, daily, or 7-day rarity sensors.",
+      description: "Ranked list of birds or bats — works with the top, rarest, recent and bats-today sensors.",
     });
   }
 }

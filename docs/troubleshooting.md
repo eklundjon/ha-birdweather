@@ -34,6 +34,10 @@ These behave differently on purpose (see #62):
 
 Audio is **off by default**; enable it under **Configure → Audio**. Even then, if your BirdWeather station has audio sharing turned off its soundscapes are silent — the button appears but plays nothing (the integration streams BirdWeather's clip directly and can't detect a silent one). FLAC also may not play in some browsers/contexts.
 
+## Bird counts dropped after upgrading
+
+On a bat-edition PUC, earlier versions counted bats as birds. Bird counts now leave bats out, so the 24-hour totals, top species, lifetime species, the activity curve and the long-term statistics can drop when you upgrade, and the statistics graph shows a one-time step. Turn on **Bat support** with **Reconfigure** to see the bats on their own sensors. See [bats.md](bats.md).
+
 ## Custom cards don't appear in the dashboard editor
 
 The integration registers `birdweather-bird-card` and `birdweather-bird-list-card` automatically on startup; you don't need to add them as Lovelace resources. If the picker doesn't list them:

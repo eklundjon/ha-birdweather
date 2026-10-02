@@ -15,6 +15,7 @@ from custom_components.birdweather.const import (
     CONF_ABSENCE_DAYS,
     CONF_ALERT_MIN_CONFIDENCE,
     CONF_AUDIO_ENABLED,
+    CONF_BAT_SUPPORT,
     CONF_FEED_MIN_CONFIDENCE,
     CONF_NEW_SPECIES_WINDOW_DAYS,
     CONF_NOTABLE_RARITY_WEIGHT,
@@ -73,6 +74,9 @@ async def test_user_flow_selects_station_creates_entry(hass: HomeAssistant) -> N
         result = await hass.config_entries.flow.async_configure(
             result["flow_id"], {CONF_STATION_ID: STATION_ID}
         )
+        # Then the bat support step, left at its default.
+        assert result["step_id"] == "bats"
+        result = await hass.config_entries.flow.async_configure(result["flow_id"], {})
         await hass.async_block_till_done()
 
     assert result["type"] is FlowResultType.CREATE_ENTRY
@@ -80,7 +84,60 @@ async def test_user_flow_selects_station_creates_entry(hass: HomeAssistant) -> N
     assert result["data"] == {
         CONF_STATION_ID: STATION_ID,
         CONF_STATION_NAME: "Backyard",
+        CONF_BAT_SUPPORT: False,
     }
+
+
+def _bat_default(result) -> bool:
+    key = next(k for k in result["data_schema"].schema if str(k) == CONF_BAT_SUPPORT)
+    return key.default()
+
+
+async def test_bat_step_pre_ticked_for_bat_edition(hass: HomeAssistant) -> None:
+    """A bat-edition PUC gets bat support ticked; the user can still decide."""
+    bat_puc = {"id": STATION_ID, "name": "Buggalo Ranch", "edition": "bat"}
+    with (
+        patch(_CLIENT, return_value=_fake_client(station=bat_puc)),
+        patch(_PATCH_SETUP_ENTRY, return_value=True),
+    ):
+        result = await hass.config_entries.flow.async_init(
+            DOMAIN, context={"source": config_entries.SOURCE_USER}
+        )
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"], {CONF_STATION_ID: STATION_ID}
+        )
+        assert result["step_id"] == "bats"
+        assert _bat_default(result) is True
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"], {CONF_BAT_SUPPORT: True}
+        )
+        await hass.async_block_till_done()
+
+    assert result["data"][CONF_BAT_SUPPORT] is True
+
+
+async def test_reconfigure_toggles_bat_support(hass: HomeAssistant) -> None:
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        unique_id=STATION_ID,
+        title="Backyard",
+        data={CONF_STATION_ID: STATION_ID, CONF_STATION_NAME: "Backyard", CONF_BAT_SUPPORT: True},
+    )
+    entry.add_to_hass(hass)
+
+    result = await entry.start_reconfigure_flow(hass)
+    assert result["step_id"] == "reconfigure"
+    assert _bat_default(result) is True
+
+    with patch(_PATCH_SETUP_ENTRY, return_value=True):
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"], {CONF_BAT_SUPPORT: False}
+        )
+        await hass.async_block_till_done()
+
+    assert result["reason"] == "reconfigure_successful"
+    assert entry.data[CONF_BAT_SUPPORT] is False
+    assert entry.data[CONF_STATION_ID] == STATION_ID
 
 
 async def test_user_flow_invalid_station(hass: HomeAssistant) -> None:

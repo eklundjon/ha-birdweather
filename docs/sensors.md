@@ -22,6 +22,8 @@ All entities are grouped under a single device per BirdWeather station. Entity I
 | `sensor.watched_species` | How many of your watch-list species the station has recorded | `detections` (your watched species, most-recently-heard first) |
 | `sensor.peak_activity_hour` | The station's busiest hour of the day, over the trailing 7 days | `hourly_activity` (24-bucket curve), `peak_hour` |
 
+With bat support on, four bat sensors are added, and `sensor.last_detection` can be a bat. Bird sensors never count bats. See [bats.md](bats.md).
+
 ### `sensor.lifetime_species`
 
 A running count of every distinct species the station has ever detected — your "life list." It only rises (the lifetime `seen_species` log never shrinks) and carries a `MEASUREMENT` state class, so Home Assistant's long-term statistics chart it as a curve climbing over weeks and months. The same number is also exposed as the `lifetime_species_count` attribute on `new_species` for templates.
@@ -118,7 +120,7 @@ BirdWeather reports a per-detection confidence (0–1). The integration derives 
 
 `last_detection` never clears: its rolling event cache is persisted and rehydrated on startup, so it shows the last detection through restarts and outages (#62). `notable_species` is deliberately **not** persisted — it drains to `unknown` (with the bird-off icon) after 24 h with nothing observed. `new_species` persists via the lifetime first-seen log.
 
-Data written to `.storage/` (six files per station; see [architecture.md](architecture.md)):
+Data written to `.storage/` (seven files per station; see [architecture.md](architecture.md)):
 
 | Store file | Contents |
 |---|---|
@@ -127,4 +129,5 @@ Data written to `.storage/` (six files per station; see [architecture.md](archit
 | `birdweather.<station_id>.yearly` | The rarity baseline (`topSpecies` ranks) |
 | `birdweather.<station_id>.seven_day` | Per-day rarity records for the 7-day `rarest_species` window |
 | `birdweather.<station_id>.recent_events` | Rolling cache of the 50 most recent events (backs `last_detection`) |
-| `birdweather.<station_id>.species_meta` | Per-species lookups (codes, scientific names, image URLs, photo attribution, reference links) |
+| `birdweather.<station_id>.species_meta` | Per-species lookups (codes, scientific names, image URLs, photo attribution, reference links), plus the bats seen (by name) |
+| `birdweather.<station_id>.last_by_class` | The newest bird and the newest bat, for `last_bird_detection` and `last_bat_detection` |

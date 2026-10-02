@@ -52,7 +52,7 @@ sequenceDiagram
     participant Store as HA .storage JSON
     participant Sensors as Sensor entities
 
-    Note over Coord,Store: _async_setup (once, before the first poll):<br/>load the 6 .storage files
+    Note over Coord,Store: _async_setup (once, before the first poll):<br/>load the 7 .storage files
     HA->>Coord: _async_update_data() - every 10 min
 
     opt once per calendar day
@@ -99,6 +99,8 @@ surfaces as `cannot_connect`. See [troubleshooting.md](troubleshooting.md).
 recent `DETECTION_FETCH_LIMIT` (300) detection events, newest first, and maps
 them into the raw shape the pipeline expects (`cn`, `sn`, `spCode`, `dt`,
 `image`, `audio`, `confidence`, plus the reference-link URLs and alpha codes).
+The bird feed asks for BirdWeather's `avian` class only (`detections(classifications: ["avian"])`). With bat support on, a second feed asks for `["bat"]`, up to `BAT_FETCH_LIMIT` (100) detections in one page, so bats can't crowd birds out of the 300. Bat records also carry `classification` and the reported `behavior`, `behavior_code` and `behavior_confidence`. See [bats.md](bats.md).
+
 Everything time-windowed is then derived **client-side** from this one response:
 the trailing-24 h list and the 1-hour recent subset are filtered out of it by
 timestamp, so a single fetch feeds `recent_detections`, `last_detection`,
@@ -120,7 +122,10 @@ newest 100.
 figures — not derived from the (sampled) feed: today's total + species count, a
 trailing-baseline total (for `activity_level`'s "typical day"), lifetime species
 count, a new-species-window diff, the day's top species (with photos), and
-`earliestDetectionAt`. These back `daily_count`, `daily_top_species`,
+`earliestDetectionAt`. The bird figures use the top-level `counts` and
+`topSpecies` queries with `classifications: ["avian"]` (the per-station
+versions can't filter by class), and the same request returns today's bat
+total and bat species list (`["bat"]`) for the bat sensors. These back `daily_count`, `daily_top_species`,
 `species_diversity`, `activity_level`, `new_species_window`, `lifetime_species`,
 and `history_start`.
 
@@ -128,7 +133,9 @@ and `history_start`.
 
 `get_baseline_count` returns `topSpecies` over the trailing rarity window
 (default 1 month; tunable — see [advanced.md](advanced.md)) as `[{bird, count}]`,
-ranked into the `{species → rank}` map that rarity scoring divides by.
+ranked into the `{species → rank}` map that rarity scoring divides by. It's
+birds only (`classifications: ["avian"]`), as are the time-of-day curves and
+the statistics backfill below, which drop rows BirdWeather classifies as bats.
 `get_time_of_day` folds the trailing-7-day half-hourly bins into a 24-bucket
 hourly curve for `peak_activity_hour`. Both refresh once per calendar day and are
 cached between polls.
