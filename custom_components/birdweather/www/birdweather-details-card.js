@@ -76,6 +76,21 @@ function _isBirdWeatherListEntity(hass, state) {
   return entry.platform === "birdweather";
 }
 
+// Card-picker suggestions ("By entity" in "Add to dashboard", Home Assistant
+// 2026.6+): whether an entity is one of this integration's sensors with a
+// `detections` list. Stricter than _isBirdWeatherListEntity, which lets entities
+// through when the registry can't be read: a suggestion must never appear for
+// another integration's entity. Older Home Assistant ignores the hook.
+function _isOwnListEntity(hass, entityId) {
+  return (
+    Array.isArray(hass?.states?.[entityId]?.attributes?.detections) &&
+    hass?.entities?.[entityId]?.platform === "birdweather"
+  );
+}
+
+// Sensors whose `detections` hold a single record: a list card adds nothing.
+const _SINGLE_RECORD_SENSORS = new Set(["last_bird_detection", "last_bat_detection"]);
+
 // ── Editor ────────────────────────────────────────────────────────────────────
 
 class BirdWeatherBirdListCardEditor extends HTMLElement {
@@ -1093,6 +1108,12 @@ if (!customElements.get("birdweather-bird-list-card")) {
       type: "birdweather-bird-list-card",
       name: "BirdWeather Bird List Card",
       description: "Ranked list of birds or bats — works with the top, rarest, recent and bats-today sensors.",
+      documentationURL: "https://github.com/eklundjon/ha-birdweather/blob/main/docs/cards.md",
+      getEntitySuggestion: (hass, entityId) =>
+        _isOwnListEntity(hass, entityId) &&
+        !_SINGLE_RECORD_SENSORS.has(hass.entities[entityId].translation_key)
+          ? { config: { type: "custom:birdweather-bird-list-card", entity: entityId } }
+          : null,
     });
   }
 }
