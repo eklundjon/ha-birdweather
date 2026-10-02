@@ -19,7 +19,7 @@ from custom_components.birdweather.const import (
     EVENT_BIRDWEATHER,
 )
 
-from .coordinator_helpers import make_client, make_coordinator
+from .coordinator_helpers import ENTRY_ID, make_client, make_coordinator
 
 STATION = "12345"
 # One reference time for every timestamp, so the quiet-gap arithmetic is exact.
@@ -94,7 +94,7 @@ def _client(bats=None):
 
 @pytest.fixture
 def events(hass: HomeAssistant) -> list:
-    entry = MockConfigEntry(domain=DOMAIN, unique_id=STATION)
+    entry = MockConfigEntry(domain=DOMAIN, unique_id=STATION, entry_id=ENTRY_ID)
     entry.add_to_hass(hass)
     dr.async_get(hass).async_get_or_create(
         config_entry_id=entry.entry_id, identifiers={(DOMAIN, STATION)}

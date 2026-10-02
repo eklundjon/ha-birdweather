@@ -10,6 +10,7 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 from unittest.mock import patch
 
+import pytest
 from homeassistant.config_entries import ConfigEntryState
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import device_registry as dr
@@ -23,7 +24,10 @@ from custom_components.birdweather.const import (
     CONF_STATION_NAME,
     DOMAIN,
 )
-from custom_components.birdweather.coordinator import BirdWeatherCoordinator
+from custom_components.birdweather.coordinator import (
+    BirdWeatherCoordinator,
+    async_get_entry_device,
+)
 
 from .coordinator_helpers import make_client
 
@@ -130,14 +134,15 @@ async def test_entry_setup_creates_entities_with_states(hass: HomeAssistant) -> 
     # Both platforms share one device with a configuration_url back to the
     # station page. No serial_number — a station ID isn't a serial number, and
     # HA would label it "Serial number" on the device page.
-    dev_reg = dr.async_get(hass)
-    device = dev_reg.async_get_device(identifiers={(DOMAIN, STATION_ID)})
+    device = async_get_entry_device(hass, (DOMAIN, STATION_ID), entry.entry_id)
     assert device is not None
     assert device.serial_number is None
     assert device.configuration_url == f"https://app.birdweather.com/stations/{STATION_ID}"
 
 
-async def test_setup_clears_legacy_serial_number(hass: HomeAssistant) -> None:
+async def test_setup_clears_legacy_serial_number(
+    hass: HomeAssistant, caplog: pytest.LogCaptureFixture
+) -> None:
     """A serial_number stamped by an older version is cleared on setup (HA keeps
     device fields the integration stops supplying, so dropping it from DeviceInfo
     isn't enough on its own)."""
@@ -165,8 +170,10 @@ async def test_setup_clears_legacy_serial_number(hass: HomeAssistant) -> None:
         await hass.config_entries.async_setup(entry.entry_id)
         await hass.async_block_till_done()
 
-    device = dr.async_get(hass).async_get_device(identifiers={(DOMAIN, STATION_ID)})
+    device = async_get_entry_device(hass, (DOMAIN, STATION_ID), entry.entry_id)
     assert device.serial_number is None
+    # Calling the deprecated device_registry.async_get_device logs a warning (2026.9+).
+    assert "device_registry.async_get_device" not in caplog.text
 
 
 async def test_entry_setup_creates_puc_hardware_entities(hass: HomeAssistant) -> None:

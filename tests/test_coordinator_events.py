@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 
+import pytest
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import device_registry as dr
 
@@ -15,7 +16,7 @@ from custom_components.birdweather.const import (
     EVENT_BIRDWEATHER,
 )
 
-from .coordinator_helpers import make_client, make_coordinator
+from .coordinator_helpers import ENTRY_ID, make_client, make_coordinator
 
 
 def _iso(minutes_ago: int) -> str:
@@ -38,7 +39,7 @@ def _register_device(hass: HomeAssistant) -> str:
     """Register a device the coordinator's _fire_event can resolve, return id."""
     from pytest_homeassistant_custom_component.common import MockConfigEntry
 
-    entry = MockConfigEntry(domain=DOMAIN, unique_id="12345")
+    entry = MockConfigEntry(domain=DOMAIN, unique_id="12345", entry_id=ENTRY_ID)
     entry.add_to_hass(hass)
     device = dr.async_get(hass).async_get_or_create(
         config_entry_id=entry.entry_id,
@@ -53,7 +54,9 @@ def _capture(hass: HomeAssistant) -> list:
     return events
 
 
-async def test_new_species_event_fires(hass: HomeAssistant) -> None:
+async def test_new_species_event_fires(
+    hass: HomeAssistant, caplog: pytest.LogCaptureFixture
+) -> None:
     _register_device(hass)
     events = _capture(hass)
 
@@ -81,6 +84,8 @@ async def test_new_species_event_fires(hass: HomeAssistant) -> None:
     assert events[0].data["ebird_url"] == "https://ebird.org/species/brdowl"
     assert events[0].data["allaboutbirds_url"]
     assert events[0].data["classification"] == "bird"
+    # Calling the deprecated device_registry.async_get_device logs a warning (2026.9+).
+    assert "device_registry.async_get_device" not in caplog.text
 
 
 async def test_watched_species_event_fires(hass: HomeAssistant) -> None:
