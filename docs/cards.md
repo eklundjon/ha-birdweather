@@ -27,7 +27,7 @@ grid_options:
 
 The card is fully responsive to width and height: in portrait the photo fills the card width over an edge-to-edge blurred fill (BirdWeather photos are 1:1 squares), with text centred below; when wider than ~3:2 the photo moves left and text appears on the right. Text scales with the card via container-query units. Two round overlay buttons sit at the **top** corners (clear of the bottom photo-credit strip): **▶ play** (top-left, when audio is enabled and a recording exists) and **ⓘ details** (top-right) — see below.
 
-Works with any **list-bearing** sensor — the 8 that expose a per-species `detections` list (`recent_detections`, `last_detection`, `daily_top_species`, `notable_species`, `new_species`, `yearly_top_species`, `rarest_species`, `watched_species`). The numeric/diagnostic sensors (`daily_count`, `lifetime_species`, `species_diversity`, `activity_level`, `new_species_window`, `history_start`, `peak_activity_hour`) have no list and aren't offered. By default the card renders the **top-ranked** record. Empty list → "No recent detections."
+Works with any **list-bearing** sensor — the 8 that expose a per-species `detections` list (`recent_detections`, `last_detection`, `daily_top_species`, `notable_species`, `new_species`, `yearly_top_species`, `rarest_species`, `watched_species`), plus, with [bat support](bats.md) on, `last_bird_detection`, `last_bat_detection` and `bats_today`. The numeric/diagnostic sensors (`daily_count`, `lifetime_species`, `species_diversity`, `activity_level`, `new_species_window`, `history_start`, `peak_activity_hour`) have no list and aren't offered. By default the card renders the **top-ranked** record. Empty list → "No recent detections."
 
 The relative timestamp refreshes every 60 seconds independently of the poll cadence, so it stays honest between polls.
 
@@ -118,11 +118,12 @@ Each row can link out to **eBird**, **All About Birds**, **Macaulay Library**, a
 
 - **Confidence** — a low/medium/high chip in the detail view (`show_confidence`, default on), derived from BirdWeather's per-detection confidence.
 - **Description** — a short **Wikipedia** summary, fetched on demand the first time a row is opened and cached for the session (`show_description`, default on). Tap it or the "Read more on Wikipedia ›" cue to open the article.
-- **Activity sparkline** — a 24-hour diel curve (▁▂▅█) with the peak hour, from the station's trailing-7-day time-of-day data (`show_activity`, default on).
+- **Activity sparkline** — a 24-hour diel curve (▁▂▅█) with the peak hour, from the station's trailing-7-day time-of-day data (`show_activity`, default on). Birds only.
+- **Bat behavior** — for a bat, the behavior BirdWeather reported and how sure it is, for example "Search/Clutter · 60%". The bird card shows it under the name.
 
 ### Play the call (audio)
 
-When a row has a recording, the detail view shows a **▶ Play call** button (and the bird card a round play button) that plays the detection's soundscape in the browser. Toggle with `show_audio` (default on, both cards).
+When a row has a recording, the detail view shows a **▶ Play call** button (and the bird card a round play button) that plays the detection's soundscape in the browser. Toggle with `show_audio` (default on, both cards). Bats have no play button yet: their recordings are ultrasonic and need processing to be audible.
 
 **Audio is off by default** — enable it at **Settings → Devices & Services → BirdWeather → Configure → Audio**. Unlike the sibling Haikubox integration, BirdWeather audio is **streamed directly** from BirdWeather's soundscape URL (FLAC) — nothing is downloaded, normalized, or cached locally, and no `ffmpeg` is needed.
 

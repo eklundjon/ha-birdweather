@@ -5,6 +5,14 @@ DOMAIN = "birdweather"
 # for public stations — the GraphQL API serves their data anonymously.
 CONF_STATION_ID = "station_id"
 CONF_STATION_NAME = "station_name"
+# Bat support is part of the entry's data, set in the setup flow and changed
+# through reconfigure (not an option): it decides which entities exist. When
+# it's off, bats are ignored entirely; when on, they get their own sensors and
+# events. Bird figures never include bats either way.
+CONF_BAT_SUPPORT = "bat_support"
+DEFAULT_BAT_SUPPORT = False
+# bat_activity fires when bats are heard after at least this long without one.
+BAT_ACTIVITY_QUIET_MINUTES = 60
 
 # Onboarding discovery radius (km) around HA's configured location.
 CONF_RADIUS_KM = "radius_km"
@@ -29,6 +37,9 @@ DAILY_WINDOW_HOURS = 24
 # detections(first:) returns newest-first; this is the ceiling we filter the
 # 1h/24h windows out of. Busy stations may need a time-bounded query later.
 DETECTION_FETCH_LIMIT = 300
+# Bats come from their own classification-filtered feed (one page), so a busy
+# night of bats can't crowd the birds out of DETECTION_FETCH_LIMIT.
+BAT_FETCH_LIMIT = 100
 
 # Soft caps on the per-sensor list attributes (same rationale as Haikubox:
 # bound state-attribute size). Per-event vs per-species as in haikubox.
@@ -66,7 +77,10 @@ EVENT_BIRDWEATHER = "birdweather_event"
 TRIGGER_NEW_SPECIES = "new_species"
 TRIGGER_UNUSUAL_VISITOR = "unusual_visitor"
 TRIGGER_WATCHED_SPECIES = "watched_species"  # a user-chosen species was detected
+TRIGGER_BAT_ACTIVITY = "bat_activity"  # bats heard again after a quiet spell
 TRIGGER_TYPES = (TRIGGER_NEW_SPECIES, TRIGGER_UNUSUAL_VISITOR, TRIGGER_WATCHED_SPECIES)
+# Offered only on stations with bat support turned on.
+BAT_TRIGGER_TYPES = (TRIGGER_BAT_ACTIVITY,)
 
 # unusual_visitor: known species reappearing after >= this many days unheard.
 CONF_ABSENCE_DAYS = "absence_days"

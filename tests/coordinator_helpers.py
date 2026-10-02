@@ -22,6 +22,7 @@ _STORE_ATTRS = (
     "_seven_day_store",
     "_events_store",
     "_meta_store",
+    "_by_class_store",
 )
 
 
@@ -87,6 +88,10 @@ def make_coordinator(
     c._image_urls = {}
     c._image_attr = {}
     c._links_cache = {}
+    c._bats = {}
+    c._bat_support = False
+    c._last_by_class = {"bird": None, "bat": None}
+    c._prev_recent_bats = None
     c._baseline_items = []
     c._seven_day_data = {}
     c._prev_recent_species = None

@@ -28,6 +28,7 @@ It reads the **public** BirdWeather GraphQL API anonymously — no account or AP
 - **Automations** — device triggers for new-species, unusual-visitor, and watched-species detections, plus blueprints for photo push notifications and playing the call on a media player
 - **Watched species** — pick (or type) species to be alerted about; a device trigger fires when one is heard, plus a **Watched species** sensor listing the ones your station has recorded (drop it into the list card for a "Birds of interest" view)
 - **Confidence controls** — optional thresholds to hide low-confidence "maybe" detections from the feed and to gate alerts on confident hits only (independent, so you can see maybes but only be pinged on sure things); the cards show a low/medium/high confidence band
+- **Bats** — on a bat-edition PUC, turn on bat support for bat sensors (last bat, bats in the last 24 hours), a bat list card showing each bat's reported behavior, and a "bat activity" trigger. Bird counts never include bats ([details](docs/bats.md))
 - **PUC hardware sensors** — for BirdWeather **PUC** stations, onboard environment readings (temperature, humidity, barometric pressure, sound level, air quality, light) and device-health diagnostics (battery voltage, power source, Wi-Fi signal, SD-card free) — created automatically, and only for the hardware your station actually reports (a BirdNET-Pi gets none)
 
 ## Quick start
@@ -55,6 +56,7 @@ Click the badge to open HACS in your Home Assistant with this repository pre-fil
 1. Go to **Settings → Devices & Services → Add Integration**.
 2. Search for **BirdWeather**.
 3. Pick a nearby public station from the list, type a name to search, or paste a numeric **station ID** directly.
+4. Choose whether to turn on **Bat support**. It's ticked already for a bat-edition PUC (see [docs/bats.md](docs/bats.md)); you can change it later with **Reconfigure**.
 
 > **Finding your station ID.** On [app.birdweather.com](https://app.birdweather.com), open your station — the ID is the number in the URL (`.../stations/<id>`). The station must be **public** for the integration to read it.
 
@@ -129,6 +131,7 @@ After setup, open the integration's **Configure** dialog to tune:
 | Full sensor reference, the `detections` attribute contract, rarity scoring, persistent state stores | [docs/sensors.md](docs/sensors.md) |
 | Both custom cards, YAML examples, tap actions, full dashboard example | [docs/cards.md](docs/cards.md) |
 | Device triggers, the `birdweather_event` payload, push-notification blueprints | [docs/automations.md](docs/automations.md) |
+| Bat support: what it adds, and how bats are kept out of bird counts | [docs/bats.md](docs/bats.md) |
 | Tuning windows & poll cadence (Advanced options), confidence filters, changing the station | [docs/advanced.md](docs/advanced.md) |
 | Config-flow errors, first-install behaviour, offline sensors, card-cache issues, diagnostics | [docs/troubleshooting.md](docs/troubleshooting.md) |
 | BirdWeather GraphQL queries, polling cadence, failure modes | [docs/api.md](docs/api.md) |

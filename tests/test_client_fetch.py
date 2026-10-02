@@ -201,33 +201,52 @@ async def test_detection_pagination_truncates_oversized_response() -> None:
     assert session.requests[0]["variables"]["first"] == 20
 
 
-# ---- get_baseline_count / get_species_counts ------------------------------- #
+async def test_raw_detections_carry_classification_and_behavior() -> None:
+    bat = {"species": {**_species("Bats", code=None), "classification": "bat"},
+           "timestamp": "t", "behavior": "Search/Clutter",
+           "behaviorCode": "bat_search_clutter", "behaviorConfidence": 0.6}
+    bird = {"species": {**_species("Robin"), "classification": "avian"}, "timestamp": "t"}
+    rows = (await _client({"station": {"detections": {"nodes": [bat, bird]}}})
+            .get_raw_detections("1"))["detections"]
+    assert rows[0]["classification"] == "bat"
+    assert rows[0]["behavior_code"] == "bat_search_clutter"
+    assert rows[0]["behavior_confidence"] == 0.6
+    assert rows[1]["classification"] == "bird"
+    assert rows[1]["behavior"] is None
+
+
+async def test_raw_detections_pass_the_class_filter() -> None:
+    session = _PagedSession([_detection_page(range(3))])
+    await BirdWeatherClient(session).get_raw_detections("1", classifications=["bat"])
+    assert session.requests[0]["variables"]["classifications"] == ["bat"]
+
+
+# ---- get_baseline_count ---------------------------------------------------- #
 
 
 async def test_get_baseline_count_keys_by_common_name() -> None:
-    data = {"station": {"topSpecies": [
+    data = {"station": {"id": "1"}, "topSpecies": [
         {"species": {"commonName": "Robin"}, "count": 50},
         {"species": {"commonName": None}, "count": 9},  # skipped (no name)
         {"species": {"commonName": "Owl"}, "count": 3},
-    ]}}
+    ]}
     out = await _client(data).get_baseline_count("1", months=2)
     assert out == [{"bird": "Robin", "count": 50}, {"bird": "Owl", "count": 3}]
 
 
-async def test_get_species_counts_keys_by_scientific_name() -> None:
-    data = {"station": {"topSpecies": [
-        {"species": {"scientificName": "Turdus migratorius"}, "count": 40},
-        {"species": {"scientificName": None}, "count": 5},  # skipped
-    ]}}
-    out = await _client(data).get_species_counts("1")
-    assert out == {"Turdus migratorius": 40}
+async def test_get_baseline_count_asks_for_birds_only() -> None:
+    session = _PagedSession([{"station": {"id": "1"}, "topSpecies": []}])
+    await BirdWeatherClient(session).get_baseline_count("1")
+    assert 'classifications: ["avian"]' in session.requests[0]["query"]
+    assert session.requests[0]["variables"]["ids"] == ["1"]
 
 
 # ---- get_overview ---------------------------------------------------------- #
 
 
 async def test_get_overview_derives_scalars_and_today_top() -> None:
-    data = {"station": {
+    data = {
+        "station": {"earliestDetectionAt": "2024-01-01T08:30:00-05:00"},
         "today": {"detections": 142, "species": 12},
         "baseline": {"detections": 880},  # / baseline_days(10) = 88.0
         "todayTop": [
@@ -237,8 +256,9 @@ async def test_get_overview_derives_scalars_and_today_top() -> None:
         "life": {"species": 57},
         "recent": [{"species": {"commonName": "Robin"}}, {"species": {"commonName": "Owl"}}],
         "hist": [{"species": {"commonName": "Robin"}}],  # Owl is new in the window
-        "earliestDetectionAt": "2024-01-01T08:30:00-05:00",
-    }}
+        "batToday": {"detections": 37},
+        "batTop": [{"species": _species("Bats", code=None), "count": 37}],
+    }
     out = await _client(data).get_overview(
         "1", today=date(2026, 6, 1), new_species_cutoff=date(2026, 5, 2), baseline_days=10
     )
@@ -250,15 +270,37 @@ async def test_get_overview_derives_scalars_and_today_top() -> None:
     assert out["history_earliest"] == "2024-01-01T08:30:00-05:00"
     assert out["today_top"][0]["species"] == "Robin"
     assert out["today_top"][0]["image_credit"] == "Pat"
+    assert out["today_top"][0]["classification"] == "bird"
+    assert out["bat_today_total"] == 37
+    assert [(r["species"], r["count"], r["classification"]) for r in out["bat_today_top"]] == [
+        ("Bats", 37, "bat")
+    ]
+
+
+async def test_get_overview_bird_figures_are_birds_only() -> None:
+    """Every bird aggregate is filtered to BirdWeather's avian class."""
+    session = _PagedSession([{}])
+    await BirdWeatherClient(session).get_overview(
+        "1", today=date(2026, 6, 1), new_species_cutoff=date(2026, 5, 2), baseline_days=10
+    )
+    query = session.requests[0]["query"]
+    for alias in ("today", "baseline", "life", "todayTop", "recent", "hist"):
+        line = next(ln for ln in query.splitlines() if ln.strip().startswith(alias + ":"))
+        assert 'classifications: ["avian"]' in line, alias
+    for alias in ("batToday", "batTop"):
+        line = next(ln for ln in query.splitlines() if ln.strip().startswith(alias + ":"))
+        assert 'classifications: ["bat"]' in line, alias
 
 
 async def test_get_overview_typical_daily_none_without_baseline() -> None:
-    data = {"station": {"today": {}, "baseline": {"detections": 0}}}
+    data = {"station": {}, "today": {}, "baseline": {"detections": 0}}
     out = await _client(data).get_overview(
         "1", today=date(2026, 6, 1), new_species_cutoff=date(2026, 5, 2), baseline_days=10
     )
     assert out["typical_daily"] is None
     assert out["today_total"] == 0
+    assert out["bat_today_total"] == 0
+    assert out["bat_today_top"] == []
 
 
 # ---- get_sensors ----------------------------------------------------------- #
@@ -291,6 +333,9 @@ async def test_get_time_of_day_folds_halfhour_bins_to_hours() -> None:
             {"key": "25", "count": 9},   # out of range → skipped
         ]},
         {"species": {"commonName": None}, "bins": []},  # nameless → skipped
+        {"species": {"commonName": "Bats", "classification": "bat"}, "bins": [
+            {"key": "7.0", "count": 40},  # bats stay out of the bird curves
+        ]},
     ]}
     out = await _client(data).get_time_of_day("1", days=7)
     robin = out["by_species"]["Robin"]
@@ -298,6 +343,7 @@ async def test_get_time_of_day_folds_halfhour_bins_to_hours() -> None:
     assert robin[8] == 1
     assert out["station"][7] == 5  # station curve is the per-hour sum
     assert sum(out["station"]) == 6
+    assert "Bats" not in out["by_species"]
 
 
 # ---- get_daily_history ----------------------------------------------------- #
@@ -305,7 +351,12 @@ async def test_get_time_of_day_folds_halfhour_bins_to_hours() -> None:
 
 async def test_get_daily_history_rows() -> None:
     data = {"dailyDetectionCounts": [
-        {"date": "2026-06-01", "total": 50, "counts": [{}, {}, {}]},  # richness 3
+        {"date": "2026-06-01", "total": 90, "counts": [
+            {"count": 30, "species": {"classification": "avian"}},
+            {"count": 15, "species": {"classification": "avian"}},
+            {"count": 5, "species": {}},  # no classification → treated as a bird
+            {"count": 40, "species": {"classification": "bat"}},  # left out
+        ]},
         {"date": None, "total": 9, "counts": []},  # no date → skipped
     ]}
     out = await _client(data).get_daily_history("1", date(2026, 6, 1), date(2026, 6, 2))

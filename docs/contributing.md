@@ -58,7 +58,7 @@ node --test "tests/js/*.test.mjs"
 
 ### How the tests stand up a coordinator
 
-The coordinator's `__init__` wires an aiohttp session, the GraphQL client, six
+The coordinator's `__init__` wires an aiohttp session, the GraphQL client, seven
 `Store` objects, and the `DataUpdateCoordinator` base. Most unit tests don't want
 all that. Two patterns keep them light:
 

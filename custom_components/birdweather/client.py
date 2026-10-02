@@ -58,11 +58,13 @@ query stations($query: String, $first: Int, $ne: InputLocation, $sw: InputLocati
 _DETECTION_PAGE_SIZE = 100
 
 _DETECTIONS_QUERY = """
-query stationDetections($id: ID!, $first: Int, $after: String) {
+query stationDetections(
+  $id: ID!, $first: Int, $after: String, $classifications: [String!]
+) {
   station(id: $id) {
     id
     name
-    detections(first: $first, after: $after) {
+    detections(first: $first, after: $after, classifications: $classifications) {
       pageInfo { hasNextPage endCursor }
       nodes {
         id
@@ -70,8 +72,12 @@ query stationDetections($id: ID!, $first: Int, $after: String) {
         confidence
         score
         certainty
+        behavior
+        behaviorCode
+        behaviorConfidence
         soundscape { url }
         species {
+          classification
           commonName
           scientificName
           ebirdCode
@@ -93,19 +99,12 @@ query stationDetections($id: ID!, $first: Int, $after: String) {
 """
 
 _TOP_SPECIES_QUERY = """
-query stationTopSpecies($id: ID!, $period: InputDuration, $limit: Int) {
-  station(id: $id) {
-    topSpecies(period: $period, limit: $limit) {
-      count
-      species {
-        commonName
-        scientificName
-        ebirdCode
-        imageUrl
-        imageCredit
-        imageLicense
-        imageLicenseUrl
-      }
+query stationTopSpecies($id: ID!, $ids: [ID!], $period: InputDuration, $limit: Int) {
+  station(id: $id) { id }
+  topSpecies(stationIds: $ids, classifications: ["avian"], period: $period, limit: $limit) {
+    count
+    species {
+      commonName
     }
   }
 }
@@ -120,31 +119,47 @@ query stationTopSpecies($id: ID!, $period: InputDuration, $limit: Int) {
 _OVERVIEW_QUERY = """
 query stationOverview(
   $id: ID!
+  $ids: [ID!]
   $today: InputDuration
   $baseline: InputDuration
   $life: InputDuration
   $recent: InputDuration
   $hist: InputDuration
 ) {
-  station(id: $id) {
-    earliestDetectionAt
-    today: counts(period: $today) { detections species }
-    baseline: counts(period: $baseline) { detections }
-    life: counts(period: $life) { species }
-    todayTop: topSpecies(period: $today, limit: 200) {
-      count
-      species {
-        commonName
-        scientificName
-        ebirdCode
-        imageUrl
-        imageCredit
-        imageLicense
-        imageLicenseUrl
-      }
+  station(id: $id) { earliestDetectionAt }
+  today: counts(stationIds: $ids, classifications: ["avian"], period: $today) { detections species }
+  baseline: counts(stationIds: $ids, classifications: ["avian"], period: $baseline) { detections }
+  life: counts(stationIds: $ids, classifications: ["avian"], period: $life) { species }
+  todayTop: topSpecies(stationIds: $ids, classifications: ["avian"], period: $today, limit: 200) {
+    count
+    species {
+      commonName
+      scientificName
+      ebirdCode
+      imageUrl
+      imageCredit
+      imageLicense
+      imageLicenseUrl
     }
-    recent: topSpecies(period: $recent, limit: 1000) { species { commonName } }
-    hist: topSpecies(period: $hist, limit: 2000) { species { commonName } }
+  }
+  recent: topSpecies(stationIds: $ids, classifications: ["avian"], period: $recent, limit: 1000) {
+    species { commonName }
+  }
+  hist: topSpecies(stationIds: $ids, classifications: ["avian"], period: $hist, limit: 2000) {
+    species { commonName }
+  }
+  batToday: counts(stationIds: $ids, classifications: ["bat"], period: $today) { detections }
+  batTop: topSpecies(stationIds: $ids, classifications: ["bat"], period: $today, limit: 100) {
+    count
+    species {
+      commonName
+      scientificName
+      ebirdCode
+      imageUrl
+      imageCredit
+      imageLicense
+      imageLicenseUrl
+    }
   }
 }
 """
@@ -156,7 +171,7 @@ query stationOverview(
 _TIME_OF_DAY_QUERY = """
 query stationTimeOfDay($id: ID!, $period: InputDuration) {
   timeOfDayDetectionCounts(stationIds: [$id], period: $period) {
-    species { commonName }
+    species { commonName classification }
     bins { key count }
   }
 }
@@ -172,7 +187,7 @@ query stationDailyHistory($id: ID!, $period: InputDuration) {
   dailyDetectionCounts(stationIds: [$id], period: $period) {
     date
     total
-    counts { speciesId }
+    counts { count species { classification } }
   }
 }
 """
@@ -184,6 +199,7 @@ query station($id: ID!) {
     id
     name
     type
+    edition
     country
     state
     coords { lat lon }
@@ -310,7 +326,7 @@ class BirdWeatherClient:
         return [_normalise_detection(n) for n in nodes]
 
     async def _get_detection_nodes(
-        self, station_id: str, first: int
+        self, station_id: str, first: int, classifications: list[str] | None = None
     ) -> list[dict[str, Any]]:
         """Up to `first` most recent detection nodes, fetched page by page.
 
@@ -318,20 +334,22 @@ class BirdWeatherClient:
         page, a page that adds nothing new, or a missing or repeated cursor, so
         a misbehaving API can't loop; overlapping pages are de-duplicated by
         detection id, so the result can hold fewer than `first` rows.
+        `classifications` (BirdWeather's, e.g. ["avian"] or ["bat"]) limits the
+        feed to those classes; None fetches every class.
         """
         nodes: list[dict[str, Any]] = []
         seen_ids: set[str] = set()
         seen_cursors: set[str] = set()
         after = None
         for _ in range(max(0, math.ceil(first / _DETECTION_PAGE_SIZE))):
-            data = await self._query(
-                _DETECTIONS_QUERY,
-                {
-                    "id": station_id,
-                    "first": min(_DETECTION_PAGE_SIZE, first - len(nodes)),
-                    "after": after,
-                },
-            )
+            variables: dict[str, Any] = {
+                "id": station_id,
+                "first": min(_DETECTION_PAGE_SIZE, first - len(nodes)),
+                "after": after,
+            }
+            if classifications is not None:
+                variables["classifications"] = classifications
+            data = await self._query(_DETECTIONS_QUERY, variables)
             station = data.get("station")
             if station is None:
                 raise BirdWeatherError("Station not found or not publicly accessible")
@@ -371,15 +389,20 @@ class BirdWeatherClient:
     # BirdWeather data in exactly that shape so that pipeline reuses verbatim.
 
     async def get_raw_detections(
-        self, station_id: str, first: int = 300
+        self,
+        station_id: str,
+        first: int = 300,
+        classifications: list[str] | None = None,
     ) -> dict[str, Any]:
         """Recent detection events in the Haikubox raw-payload shape.
 
         Per-event (not collapsed); carries the BirdWeather extras (`image`,
         `audio`, `confidence`) alongside the haikubox keys so the coordinator
-        can thread them through after normalisation.
+        can thread them through after normalisation, plus `classification`
+        ("bird" or "bat") and, for bats, the reported `behavior`.
+        `classifications` limits the feed (see _get_detection_nodes).
         """
-        nodes = await self._get_detection_nodes(station_id, first)
+        nodes = await self._get_detection_nodes(station_id, first, classifications)
         out: list[dict[str, Any]] = []
         for n in nodes:
             sp = n.get("species") or {}
@@ -397,6 +420,10 @@ class BirdWeatherClient:
                     "ebird_url": sp.get("ebirdUrl"),
                     "wikipedia_url": sp.get("wikipediaUrl"),
                     "birdweather_url": sp.get("birdweatherUrl"),
+                    "classification": _classification(sp),
+                    "behavior": n.get("behavior"),
+                    "behavior_code": n.get("behaviorCode"),
+                    "behavior_confidence": n.get("behaviorConfidence"),
                     **_species_attribution(sp),
                 }
             )
@@ -406,17 +433,21 @@ class BirdWeatherClient:
         self, station_id: str, months: int = 1, limit: int = 200
     ) -> list[dict[str, Any]]:
         """Rarity baseline as `[{bird, count}]` (the shape the pipeline ranks),
-        keyed by common name. From topSpecies over a trailing `months` window."""
+        keyed by common name. From topSpecies over a trailing `months` window,
+        birds only: rarity is a bird measure."""
         data = await self._query(
             _TOP_SPECIES_QUERY,
-            {"id": station_id, "period": {"count": months, "unit": "month"}, "limit": limit},
+            {
+                "id": station_id,
+                "ids": [station_id],
+                "period": {"count": months, "unit": "month"},
+                "limit": limit,
+            },
         )
-        station = data.get("station")
-        if station is None:
+        if data.get("station") is None:
             raise BirdWeatherError("Station not found or not publicly accessible")
-        nodes = station.get("topSpecies") or []
         out: list[dict[str, Any]] = []
-        for n in nodes:
+        for n in data.get("topSpecies") or []:
             cn = (n.get("species") or {}).get("commonName")
             if cn:
                 out.append({"bird": cn, "count": n.get("count") or 0})
@@ -431,7 +462,9 @@ class BirdWeatherClient:
         baseline_days: int,
     ) -> dict[str, Any]:
         """Native per-period aggregates for the activity / diversity / new-species
-        / history sensors, in a single GraphQL round-trip.
+        / history sensors, in a single GraphQL round-trip. The bird figures are
+        filtered to BirdWeather's "avian" class, so bats never count toward
+        them; today's bat total and bat species list come back alongside.
 
         `new_species_cutoff` is `today - NEW_SPECIES_WINDOW_DAYS`; `baseline_days`
         sizes the typical-day divisor. Returns derived scalars plus a normalised
@@ -445,6 +478,7 @@ class BirdWeatherClient:
             _OVERVIEW_QUERY,
             {
                 "id": station_id,
+                "ids": [station_id],
                 "today": {"count": 1, "unit": "day"},
                 "baseline": {"count": baseline_days, "unit": "day"},
                 "life": {"from": _ALLTIME_FROM, "to": today_iso},
@@ -453,29 +487,32 @@ class BirdWeatherClient:
             },
         )
         st = data.get("station") or {}
-        today_c = st.get("today") or {}
-        baseline_det = (st.get("baseline") or {}).get("detections") or 0
+        today_c = data.get("today") or {}
+        baseline_det = (data.get("baseline") or {}).get("detections") or 0
 
-        today_top: list[dict[str, Any]] = []
-        for n in st.get("todayTop") or []:
-            sp = n.get("species") or {}
-            name = sp.get("commonName")
-            if not name:
-                continue
-            today_top.append(
-                {
-                    "species": name,
-                    "scientific_name": sp.get("scientificName") or "",
-                    "sp_code": sp.get("ebirdCode") or "",
-                    "image_url": sp.get("imageUrl"),
-                    "count": int(n.get("count") or 0),
-                    **_species_attribution(sp),
-                }
-            )
+        def _top(key: str, cls: str) -> list[dict[str, Any]]:
+            out: list[dict[str, Any]] = []
+            for n in data.get(key) or []:
+                sp = n.get("species") or {}
+                name = sp.get("commonName")
+                if not name:
+                    continue
+                out.append(
+                    {
+                        "species": name,
+                        "scientific_name": sp.get("scientificName") or "",
+                        "sp_code": sp.get("ebirdCode") or "",
+                        "image_url": sp.get("imageUrl"),
+                        "count": int(n.get("count") or 0),
+                        "classification": cls,
+                        **_species_attribution(sp),
+                    }
+                )
+            return out
 
         def _names(key: str) -> set[str]:
             names: set[str] = set()
-            for n in st.get(key) or []:
+            for n in data.get(key) or []:
                 cn = (n.get("species") or {}).get("commonName")
                 if cn:
                     names.add(cn)
@@ -486,12 +523,14 @@ class BirdWeatherClient:
             "history_earliest": st.get("earliestDetectionAt") or None,
             "today_total": int(today_c.get("detections") or 0),
             "today_species_count": int(today_c.get("species") or 0),
-            "lifetime_species": int((st.get("life") or {}).get("species") or 0),
+            "lifetime_species": int((data.get("life") or {}).get("species") or 0),
             "typical_daily": (
                 round(baseline_det / baseline_days, 1) if baseline_det else None
             ),
             "new_species_window": len(_names("recent") - _names("hist")),
-            "today_top": today_top,
+            "today_top": _top("todayTop", BIRD),
+            "bat_today_total": int((data.get("batToday") or {}).get("detections") or 0),
+            "bat_today_top": _top("batTop", BAT),
         }
 
     async def get_sensors(self, station_id: str) -> dict[str, Any]:
@@ -527,8 +566,10 @@ class BirdWeatherClient:
         by_species: dict[str, list[int]] = {}
         station = [0] * 24
         for row in rows:
-            name = (row.get("species") or {}).get("commonName")
-            if not name:
+            sp = row.get("species") or {}
+            name = sp.get("commonName")
+            # Birds only: bats would dominate the station's night-time curve.
+            if not name or sp.get("classification", API_BIRDS) != API_BIRDS:
                 continue
             hourly = [0] * 24
             for b in row.get("bins") or []:
@@ -562,33 +603,18 @@ class BirdWeatherClient:
             day = row.get("date")
             if not day:
                 continue
+            # The day's `total` includes bats, so add up the bird rows instead.
+            birds = [
+                c for c in row.get("counts") or []
+                if ((c.get("species") or {}).get("classification") or API_BIRDS) == API_BIRDS
+            ]
             out.append(
                 {
                     "date": day,
-                    "total": int(row.get("total") or 0),
-                    "species": len(row.get("counts") or []),
+                    "total": sum(int(c.get("count") or 0) for c in birds),
+                    "species": len(birds),
                 }
             )
-        return out
-
-    async def get_species_counts(
-        self, station_id: str, months: int = 1, limit: int = 200
-    ) -> dict[str, int]:
-        """Map of scientific_name -> detection count over the trailing N months,
-        ranked highest-first by the API. Serves as the rarity baseline (the
-        BirdWeather analogue of Haikubox's yearly_ranks)."""
-        data = await self._query(
-            _TOP_SPECIES_QUERY,
-            {"id": station_id, "period": {"count": months, "unit": "month"}, "limit": limit},
-        )
-        station = data.get("station") or {}
-        nodes = station.get("topSpecies") or []
-        out: dict[str, int] = {}
-        for n in nodes:
-            sp = n.get("species") or {}
-            sci = sp.get("scientificName")
-            if sci:
-                out[sci] = n.get("count") or 0
         return out
 
 
@@ -613,6 +639,18 @@ def _parse_image_credit(raw: str | None) -> tuple[str | None, str | None]:
     return (text or None), (url or None)
 
 
+# BirdWeather's classification for the feed filters, and ours for records.
+API_BIRDS = "avian"
+API_BATS = "bat"
+BIRD = "bird"
+BAT = "bat"
+
+
+def _classification(sp: dict[str, Any]) -> str:
+    """BAT for a species BirdWeather classifies as a bat, else BIRD."""
+    return BAT if sp.get("classification") == API_BATS else BIRD
+
+
 def _species_attribution(sp: dict[str, Any]) -> dict[str, Any]:
     """Photo credit/license for a Species node, as clean (non-HTML) fields."""
     credit, credit_url = _parse_image_credit(sp.get("imageCredit"))
@@ -629,6 +667,8 @@ def _clean_station(node: dict[str, Any]) -> dict[str, Any]:
         "id": node["id"],
         "name": (node.get("name") or "").strip() or f"Station {node['id']}",
         "type": node.get("type"),
+        # "bat" for a bat-edition PUC (pre-ticks bat support in the setup flow).
+        "edition": node.get("edition"),
         "country": node.get("country"),
         "state": node.get("state"),
         "coords": node.get("coords"),

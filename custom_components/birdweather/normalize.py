@@ -17,6 +17,18 @@ from .const import CONFIDENCE_BAND_HIGH, CONFIDENCE_BAND_LOW
 # cards can show attribution (CC BY-SA images require it).
 _ATTR_KEYS = ("image_credit", "image_credit_url", "image_license", "image_license_url")
 
+# What a bat detection reports about the bat's behavior (absent for birds),
+# carried from the latest event onto each record for the cards and events.
+_BEHAVIOR_KEYS = ("behavior", "behavior_code", "behavior_confidence")
+
+
+def _detection_class(item: dict[str, Any]) -> dict[str, Any]:
+    """The classification ("bird" or "bat") and behavior fields of a raw event."""
+    return {
+        "classification": item.get("classification") or "bird",
+        **{k: item.get(k) for k in _BEHAVIOR_KEYS},
+    }
+
 
 def _parse_dt(value: Any) -> datetime | None:
     """Parse an ISO-8601 timestamp to an aware datetime (UTC if naive).
@@ -154,6 +166,7 @@ def _normalise_detections(
                 "rarity_score": 0.0,
                 "yearly_rank": 0,
                 **{k: item.get(k) for k in _ATTR_KEYS},
+                **_detection_class(item),
             }
         rec = by_species[key]
         rec["count"] += 1
@@ -164,6 +177,7 @@ def _normalise_detections(
             rec["audio_url"] = item.get("audio") if audio_enabled else None
             rec["confidence"] = item.get("confidence")
             rec["confidence_band"] = _confidence_band(item.get("confidence"))
+            rec.update(_detection_class(item))
             if item.get("image"):
                 rec["image_url"] = item.get("image")
 
@@ -294,6 +308,7 @@ def _build_recent_events(
             "rarity_score": round(rank / denom, 4),
             "yearly_rank": rank,
             **{k: item.get(k) for k in _ATTR_KEYS},
+            **_detection_class(item),
         })
     events.sort(key=lambda e: e.get("last_seen") or "", reverse=True)
     return events[:limit]

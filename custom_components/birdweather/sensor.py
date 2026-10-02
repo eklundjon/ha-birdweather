@@ -23,9 +23,10 @@ from homeassistant.const import (
     UnitOfTemperature,
 )
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from .const import CONF_STATION_ID
+from .const import CONF_BAT_SUPPORT, CONF_STATION_ID, DEFAULT_BAT_SUPPORT, DOMAIN
 from .coordinator import BirdWeatherConfigEntry, BirdWeatherCoordinator
 from .entity import BirdWeatherEntity
 
@@ -223,6 +224,22 @@ async def async_setup_entry(
         if suites.get(desc.suite)
     )
 
+    bat_sensors = [
+        BirdWeatherLastBirdDetectionSensor(coordinator, station_id),
+        BirdWeatherLastBatDetectionSensor(coordinator, station_id),
+        BirdWeatherBatCountSensor(coordinator, station_id),
+        BirdWeatherBatsTodaySensor(coordinator, station_id),
+    ]
+    if entry.data.get(CONF_BAT_SUPPORT, DEFAULT_BAT_SUPPORT):
+        entities.extend(bat_sensors)
+    else:
+        # Bat support turned off (via reconfigure): remove the bat entities
+        # rather than leave them behind as "unavailable".
+        registry = er.async_get(hass)
+        for sensor in bat_sensors:
+            if entity_id := registry.async_get_entity_id("sensor", DOMAIN, sensor.unique_id):
+                registry.async_remove(entity_id)
+
     async_add_entities(entities)
 
 
@@ -279,6 +296,82 @@ class BirdWeatherLastDetectionSensor(_BirdWeatherSensor):
     @property
     def extra_state_attributes(self) -> dict:
         return {"detections": self.coordinator.data.get("recent_events", [])}
+
+
+class BirdWeatherLastBirdDetectionSensor(BirdWeatherLastDetectionSensor):
+    """The most recent bird, when bat support makes last_detection a mix of
+    birds and bats. Kept from its own persisted record, so a night of bats
+    can't push it out across a restart."""
+
+    _attr_translation_key = "last_bird_detection"
+
+    def __init__(self, coordinator: BirdWeatherCoordinator, station_id: str) -> None:
+        super().__init__(coordinator, station_id)
+        self._attr_unique_id = f"{station_id}_last_bird_detection"
+
+    def _latest(self) -> dict | None:
+        return self.coordinator.data.get("last_bird_detection")
+
+    @property
+    def extra_state_attributes(self) -> dict:
+        d = self._latest()
+        return {"detections": [d] if d else []}
+
+
+class BirdWeatherLastBatDetectionSensor(BirdWeatherLastBirdDetectionSensor):
+    """The most recent bat (bat support only)."""
+
+    _attr_translation_key = "last_bat_detection"
+    _attr_icon = "mdi:bat"
+
+    def __init__(self, coordinator: BirdWeatherCoordinator, station_id: str) -> None:
+        super().__init__(coordinator, station_id)
+        self._attr_unique_id = f"{station_id}_last_bat_detection"
+
+    def _latest(self) -> dict | None:
+        return self.coordinator.data.get("last_bat_detection")
+
+
+class BirdWeatherBatCountSensor(_BirdWeatherSensor):
+    """Bat detections over the trailing 24 hours, from BirdWeather's
+    bat-filtered native counts — the bat counterpart of "Total detections
+    (24 h)" (bat support only)."""
+
+    _attr_translation_key = "bat_count_today"
+    _attr_icon = "mdi:bat"
+    _attr_native_unit_of_measurement = "detections"
+    _attr_state_class = SensorStateClass.MEASUREMENT
+
+    def __init__(self, coordinator: BirdWeatherCoordinator, station_id: str) -> None:
+        super().__init__(coordinator, station_id)
+        self._attr_unique_id = f"{station_id}_bat_count_today"
+
+    @property
+    def native_value(self) -> int:
+        return self.coordinator.data.get("bat_today_total", 0)
+
+
+class BirdWeatherBatsTodaySensor(_BirdWeatherSensor):
+    """Bats over the trailing 24 hours by true detection count — the bat
+    counterpart of "Top species (24 h)", and the sensor for a bat list card
+    (bat support only)."""
+
+    _attr_translation_key = "bats_today"
+    _attr_icon = "mdi:bat"
+    _attr_native_unit_of_measurement = "species"
+    _attr_state_class = SensorStateClass.MEASUREMENT
+
+    def __init__(self, coordinator: BirdWeatherCoordinator, station_id: str) -> None:
+        super().__init__(coordinator, station_id)
+        self._attr_unique_id = f"{station_id}_bats_today"
+
+    @property
+    def native_value(self) -> int:
+        return len(self.coordinator.data.get("bats_today", []))
+
+    @property
+    def extra_state_attributes(self) -> dict:
+        return {"detections": self.coordinator.data.get("bats_today", [])}
 
 
 class BirdWeatherDailyCountSensor(_BirdWeatherSensor):

@@ -55,13 +55,17 @@ async def main(station_id: str) -> None:
         coord._image_urls = {}
         coord._image_attr = {}
         coord._links_cache = {}
+        coord._bats = {}
+        coord._bat_support = True  # exercise the bat feed against the live station too
+        coord._last_by_class = {"bird": None, "bat": None}
+        coord._prev_recent_bats = None
         coord._seven_day_data = {}
         coord._prev_recent_species = None
         # Drives _async_update_data directly (not _async_setup), so stores are
         # never loaded — the fakes above stand in.
         for attr in (
             "_store", "_last_seen_store", "_yearly_store", "_seven_day_store",
-            "_events_store", "_meta_store",
+            "_events_store", "_meta_store", "_by_class_store",
         ):
             setattr(coord, attr, _FakeStore())
 
@@ -87,6 +91,15 @@ async def main(station_id: str) -> None:
     for k in ("today_total", "typical_daily_count", "new_species_window",
               "history_earliest", "today_top"):
         print(f"  {k:22} -> {head(k)}")
+
+    print("\nbat sensors:")
+    for k in ("last_bird_detection", "last_bat_detection", "bat_today_total", "bats_today"):
+        print(f"  {k:22} -> {head(k)}")
+    bat = data.get("last_bat_detection") or {}
+    if bat:
+        print("  last bat:", {f: bat.get(f) for f in (
+            "behavior", "behavior_code", "behavior_confidence", "ebird_url",
+            "wikipedia_url", "birdweather_url", "audio_url", "image_url")})
 
     ld = data.get("last_detection") or {}
     print("\nlast_detection record:")

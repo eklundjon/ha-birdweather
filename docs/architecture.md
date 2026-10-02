@@ -31,7 +31,7 @@ graph TB
     end
     subgraph External
         API["app.birdweather.com/graphql"]
-        HAStore["HA .storage/<br/>6 JSON files"]
+        HAStore["HA .storage/<br/>7 JSON files"]
     end
 
     ConfigFlow -- "validates station (client.py)" --> API
@@ -129,7 +129,7 @@ The rarity baseline (`topSpecies`), the diel histogram, and the
 statistics-imported date — each refreshed once per calendar day and kept between
 polls.
 
-### 3. Persisted (`.storage/`, six files per station)
+### 3. Persisted (`.storage/`, seven files per station)
 
 | Store | Rehydrated by | Contents |
 |---|---|---|
@@ -138,7 +138,8 @@ polls.
 | `birdweather.<id>.yearly` | `_async_setup` | the rarity baseline ranks |
 | `birdweather.<id>.seven_day` | `_async_setup` | per-day records for the 7-day `rarest_species` window (hot) |
 | `birdweather.<id>.recent_events` | `_async_setup` | rolling 50-event buffer behind `last_detection` (hot) |
-| `birdweather.<id>.species_meta` | `_async_setup` | the five cold per-species maps (codes, scientific names, image URLs, photo attribution, reference links) |
+| `birdweather.<id>.species_meta` | `_async_setup` | the cold per-species maps (codes, scientific names, image URLs, photo attribution, reference links), plus `bats`: each bat seen, by name, with its photo and links (bats have no eBird code to key the other maps by) |
+| `birdweather.<id>.last_by_class` | `_async_setup` | the newest bird and newest bat detection, kept apart from the event buffer so a night of bats can't push out the last bird |
 
 Each store is written only when its data changes, gated by a dirty flag. The
 split is deliberate: HA's `Store` rewrites the whole file on any change, so the

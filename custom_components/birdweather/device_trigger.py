@@ -1,8 +1,10 @@
 """Device triggers for BirdWeather — expose the detection events in the
 automation editor's "When → device" picker.
 
-Both triggers wrap the `birdweather_event` bus event, filtered by its `type`
-field, via the core event trigger platform (the deconz / bthome pattern).
+The species triggers are available on every BirdWeather device, and
+bat_activity on devices with bat support turned on. They wrap the
+`birdweather_event` bus event, filtered by its `type` field, via the core event
+trigger platform (the deconz / bthome pattern).
 """
 
 from __future__ import annotations
@@ -19,20 +21,43 @@ from homeassistant.const import (
     CONF_TYPE,
 )
 from homeassistant.core import CALLBACK_TYPE, HomeAssistant
+from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.trigger import TriggerActionType, TriggerInfo
 from homeassistant.helpers.typing import ConfigType
 
-from .const import DOMAIN, EVENT_BIRDWEATHER, TRIGGER_TYPES
+from .const import (
+    BAT_TRIGGER_TYPES,
+    CONF_BAT_SUPPORT,
+    DEFAULT_BAT_SUPPORT,
+    DOMAIN,
+    EVENT_BIRDWEATHER,
+    TRIGGER_TYPES,
+)
 
 TRIGGER_SCHEMA = DEVICE_TRIGGER_BASE_SCHEMA.extend(
-    {vol.Required(CONF_TYPE): vol.In(TRIGGER_TYPES)}
+    {vol.Required(CONF_TYPE): vol.In(TRIGGER_TYPES + BAT_TRIGGER_TYPES)}
 )
+
+
+def _has_bat_support(hass: HomeAssistant, device_id: str) -> bool:
+    device = dr.async_get(hass).async_get(device_id)
+    if device is None:
+        return False
+    return any(
+        (entry := hass.config_entries.async_get_entry(entry_id)) is not None
+        and entry.domain == DOMAIN
+        and entry.data.get(CONF_BAT_SUPPORT, DEFAULT_BAT_SUPPORT)
+        for entry_id in device.config_entries
+    )
 
 
 async def async_get_triggers(
     hass: HomeAssistant, device_id: str
 ) -> list[dict[str, Any]]:
     """List the triggers a BirdWeather device offers."""
+    types = TRIGGER_TYPES
+    if _has_bat_support(hass, device_id):
+        types += BAT_TRIGGER_TYPES
     return [
         {
             CONF_PLATFORM: "device",
@@ -40,7 +65,7 @@ async def async_get_triggers(
             CONF_DOMAIN: DOMAIN,
             CONF_TYPE: trigger_type,
         }
-        for trigger_type in TRIGGER_TYPES
+        for trigger_type in types
     ]
 
 

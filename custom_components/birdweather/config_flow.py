@@ -31,6 +31,7 @@ from .const import (
     CONF_ABSENCE_DAYS,
     CONF_ALERT_MIN_CONFIDENCE,
     CONF_AUDIO_ENABLED,
+    CONF_BAT_SUPPORT,
     CONF_FEED_MIN_CONFIDENCE,
     CONF_NEW_SPECIES_WINDOW_DAYS,
     CONF_NOTABLE_RARITY_WEIGHT,
@@ -44,6 +45,7 @@ from .const import (
     DEFAULT_ABSENCE_DAYS,
     DEFAULT_ALERT_MIN_CONFIDENCE,
     DEFAULT_AUDIO_ENABLED,
+    DEFAULT_BAT_SUPPORT,
     DEFAULT_FEED_MIN_CONFIDENCE,
     DEFAULT_NOTABLE_RARITY_WEIGHT,
     DEFAULT_RADIUS_KM,
@@ -75,6 +77,7 @@ class BirdWeatherConfigFlow(ConfigFlow, domain=DOMAIN):
 
     def __init__(self) -> None:
         self._search: str = ""
+        self._station: dict[str, Any] = {}
 
     @staticmethod
     @callback
@@ -103,13 +106,8 @@ class BirdWeatherConfigFlow(ConfigFlow, domain=DOMAIN):
                 if not errors:
                     await self.async_set_unique_id(station_id)
                     self._abort_if_unique_id_configured()
-                    return self.async_create_entry(
-                        title=station["name"],
-                        data={
-                            CONF_STATION_ID: station_id,
-                            CONF_STATION_NAME: station["name"],
-                        },
-                    )
+                    self._station = station
+                    return await self.async_step_bats()
             elif search:
                 # Re-run discovery as a name search and re-render the form.
                 self._search = search
@@ -157,6 +155,54 @@ class BirdWeatherConfigFlow(ConfigFlow, domain=DOMAIN):
             errors=errors,
             description_placeholders={"count": str(len(options))},
         )
+
+
+    async def async_step_bats(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Second setup step: bat support, pre-ticked for a bat-edition PUC.
+
+        It lives in the entry's data rather than the options because it decides
+        which entities exist; reconfigure changes it later."""
+        station = self._station
+        if user_input is not None:
+            return self.async_create_entry(
+                title=station["name"],
+                data={
+                    CONF_STATION_ID: str(station["id"]),
+                    CONF_STATION_NAME: station["name"],
+                    CONF_BAT_SUPPORT: user_input.get(CONF_BAT_SUPPORT, DEFAULT_BAT_SUPPORT),
+                },
+            )
+        return self.async_show_form(
+            step_id="bats",
+            data_schema=_bat_schema(station.get("edition") == "bat"),
+            description_placeholders={"station": station["name"]},
+        )
+
+    async def async_step_reconfigure(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Change bat support (the station itself stays fixed)."""
+        entry = self._get_reconfigure_entry()
+        if user_input is not None:
+            return self.async_update_reload_and_abort(
+                entry,
+                data_updates={
+                    CONF_BAT_SUPPORT: user_input.get(CONF_BAT_SUPPORT, DEFAULT_BAT_SUPPORT)
+                },
+            )
+        return self.async_show_form(
+            step_id="reconfigure",
+            data_schema=_bat_schema(entry.data.get(CONF_BAT_SUPPORT, DEFAULT_BAT_SUPPORT)),
+            description_placeholders={"station": entry.title},
+        )
+
+
+def _bat_schema(default: bool) -> vol.Schema:
+    return vol.Schema(
+        {vol.Optional(CONF_BAT_SUPPORT, default=default): BooleanSelector()}
+    )
 
 
 class BirdWeatherOptionsFlow(OptionsFlow):

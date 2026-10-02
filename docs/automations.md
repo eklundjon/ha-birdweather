@@ -13,6 +13,7 @@ Create → When → Device**:
 | --- | --- |
 | **New species detected** | A species is heard at this station for the **first time ever** — a genuine lifetime first. |
 | **Unusual visitor detected** | A species the station already knows **returns after a long absence** (default 30 days unheard; see [Tuning](#tuning-the-unusual-visitor-threshold)). |
+| **Bat activity started** | Only with [bat support](bats.md) on: bats are heard after at least 60 minutes without one. |
 | **Watched species detected** | A species **you chose to watch** is heard. Pick the species in **Settings → Devices & Services → BirdWeather → Configure** (a list of ones your station has detected, plus a free-text box for ones it hasn't yet). |
 
 Pick the station, pick the trigger, and add whatever actions you like. The
@@ -91,7 +92,8 @@ Event data:
 
 | Field | Description |
 | --- | --- |
-| `type` | `new_species`, `unusual_visitor`, or `watched_species`. |
+| `type` | `new_species`, `unusual_visitor`, `watched_species`, or `bat_activity`. |
+| `classification` | `bird` or `bat`. Bats only appear with [bat support](bats.md) on. |
 | `device_id` | HA device-registry id of the station (what the device trigger filters on). |
 | `station_id` | The BirdWeather station ID. |
 | `device_name` | Friendly name of the station. |
@@ -104,7 +106,7 @@ Event data:
 | `confidence` | Detection confidence (0–1). |
 | `confidence_band` | `low` / `medium` / `high`. |
 | `last_seen` | Timestamp of this detection. |
-| `count` | Times this species was heard in the recent (1-hour) window. |
+| `count` | Times this species was heard in the recent (1-hour) window. For `bat_activity`, the bat detections since the previous one. |
 | `ebird_url` | eBird species page. |
 | `wikipedia_url` | Wikipedia article. |
 | `allaboutbirds_url` | All About Birds species guide. |
@@ -113,7 +115,9 @@ Event data:
 | `rarity_score` | Rarity vs. the station's rarity baseline (1.0 = rarest). |
 | `yearly_rank` | Rank within the rarity baseline (1 = most common). The field name mirrors the Haikubox pipeline and is kept for compatibility. |
 | `days_absent` | **`unusual_visitor` only** — days since the previous sighting. |
-| `lifetime_species_count` | **`new_species` only** — total distinct species ever detected at this station, including this one. |
+| `lifetime_species_count` | **`new_species` only** — total distinct species ever detected at this station, including this one. For a bat, how many bat species. |
+| `behavior`, `behavior_code`, `behavior_confidence` | Bats only: the reported behavior (for example "Search/Clutter", `bat_search_clutter`) and how sure BirdWeather is of it. `null` for birds. |
+| `quiet_minutes` | **`bat_activity` only** — minutes since the previous bat. |
 
 In templates these are reached via `trigger.event.data.<field>` (for example
 `{{ trigger.event.data.species }}`).
