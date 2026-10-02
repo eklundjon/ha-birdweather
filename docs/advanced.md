@@ -1,8 +1,26 @@
-# Advanced configuration
+# Options
 
-## Windows and polling
+Every option is under **Settings → Devices & Services → BirdWeather → Configure**, in the order the form shows them below. The defaults work for most stations. Saving reloads the integration, so new values take effect right away.
 
-The defaults work for most stations, but you can change them under **Settings → Devices & Services → BirdWeather → Configure → Advanced**. It's a collapsed section. Saving reloads the integration, so new values take effect right away.
+The station and bat support aren't options. See [the last section](#changing-the-station-or-bat-support).
+
+## Main options
+
+| Option | Default | Range | What it does |
+| --- | --- | --- | --- |
+| **Notability: % weight toward rarity** | 70% | 0–100% | How `notable_species` balances rarity against recency. 100% ranks on rarity alone, 0% on how recently each bird was heard. See [sensors.md](sensors.md#tuning-notable-species). |
+| **Unusual visitor: days unheard** | 30 days | 1–365 days | How long a species the station knows has to go unheard before it counts as an unusual visitor when it comes back. This drives the `unusual_visitor` trigger. |
+| **Hide detections below confidence** | 0% | 0–100% | Leaves low-confidence "maybe" detections out of the recent, last, notable and new sensors and the cards. 0% shows everything. The 24-hour total and diversity come straight from BirdWeather's own counts, so this doesn't change them. |
+| **Only alert above confidence** | 0% | 0–100% | The new-species, unusual-visitor and watched-species triggers don't fire below this confidence. 0% alerts on everything. It's independent of the hide filter, so you can keep seeing the maybes and only get notified about confident detections. |
+| **Audio: enable "play the call"** (beta) | off | | Adds a play button to the cards that plays the detection's soundscape in your browser. Off means no `audio_url`, so no button. If the station has audio sharing turned off, its soundscapes are silent and the button plays nothing. See [cards.md](cards.md#play-the-call-audio). |
+| **Watch species (detected here)** | none | | Species to get a "watched species detected" trigger for, picked from what your station has heard. |
+| **Also watch (one name per line)** | empty | | Species your station hasn't heard yet, such as a bird you're hoping for. Use the common name exactly as BirdWeather spells it. |
+
+See [automations.md](automations.md) for the triggers.
+
+## Advanced
+
+A collapsed section at the bottom of the form.
 
 | Option | Default | Range | What it does |
 | --- | --- | --- | --- |
@@ -36,13 +54,6 @@ automation:
 
 This is standard Home Assistant. See [defining a custom polling interval](https://www.home-assistant.io/common-tasks/general/#defining-a-custom-polling-interval) in the HA docs.
 
-## Confidence filters
+## Changing the station or bat support
 
-Two options use BirdWeather's confidence for each detection. They're at the top of the **Configure** dialog, not under **Advanced**, and they're independent of each other:
-
-- **Hide detections below confidence** leaves low-confidence "maybe" detections out of the recent, last, notable and new sensors and the cards. The 24-hour total and diversity come straight from BirdWeather's own counts, so this doesn't change them.
-- **Only alert above confidence** stops the new-species, unusual-visitor and watched-species triggers from firing below that confidence. You can keep seeing the maybes and only get notified about confident detections.
-
-## Changing the station
-
-The station ID is the integration entry's identity, so you can't switch an entry to a different station. **Reconfigure** only changes bat support (see [bats.md](bats.md)). To use a different station, remove the BirdWeather entry and add it again with the new station. Removing an entry also deletes that station's saved history (see [architecture.md](architecture.md)).
+The station ID is the integration entry's identity, so you can't switch an entry to a different station. **Reconfigure** changes bat support, and only that (see [bats.md](bats.md)). To use a different station, remove the BirdWeather entry and add it again with the new station. Removing an entry also deletes that station's saved history (see [architecture.md](architecture.md)).

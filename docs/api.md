@@ -124,6 +124,7 @@ At the default interval that's a handful of requests every 10 minutes (the detec
 | Failure | What happens |
 |---|---|
 | The detection feed fails (a network or GraphQL error) | `_async_update_data` raises `UpdateFailed`, and the entities are unavailable until the next good poll |
+| The detection feed fails with a `Retry-After` header (usually a `429`) | Same, and on Home Assistant 2025.12 and later the next poll waits as long as the header asks, capped at an hour. A delay shorter than the poll interval is ignored, since Home Assistant would otherwise poll sooner than usual. |
 | The rarity baseline query fails | Logged, and the saved baseline is kept. On the very first poll, with no saved baseline, it raises `UpdateFailed` instead, so rarity isn't scored against nothing. |
 | The overview, sensors, time-of-day or history query fails | Logged, and the affected sensors keep their previous value (or `unknown`). The rest of the poll still completes. |
 

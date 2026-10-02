@@ -171,6 +171,17 @@ sequenceDiagram
 
 `hacs.json` sets the minimum to Home Assistant 2025.4. The reason is the recorder statistics API used by [`statistics.py`](../custom_components/birdweather/statistics.py): `StatisticMeanType` and the `mean_type` field on `StatisticMetaData` arrived in 2025.4.0, and on older versions the import fails. The code also passes `unit_class=None`, which only became a real `StatisticMetaData` field in 2025.11. Older versions ignore it.
 
+Some newer APIs are used where they exist, with a fallback for older versions. Each fallback only runs on an older Home Assistant, so test those changes on the minimum too (see [contributing.md](contributing.md#setup)):
+
+| API | Since | Used for | Fallback |
+|---|---|---|---|
+| `UpdateFailed(retry_after=...)` | 2025.12 | Honoring `Retry-After` when the detection feed fails | A plain `UpdateFailed` |
+| `DeviceEntry.config_entry_id` | 2026.8 | `device_trigger` checking for bat support; `config_entries` is deprecated from 2026.10 | `config_entries` |
+| `async_get_device_by_identifier` | 2026.8 | Finding the device for `birdweather_event` and the old serial-number cleanup; `async_get_device` is deprecated from 2026.9 | `async_get_device` |
+| `UnitOfRatio.PARTS_PER_MILLION` | absent in 2026.2, present by 2026.8 | The VOC sensor's unit; `CONCENTRATION_PARTS_PER_MILLION` is deprecated and removed in 2027.8 | `CONCENTRATION_PARTS_PER_MILLION` |
+
+Reconfigure finishes with `async_update_entry` and then `async_abort`, rather than `async_update_and_abort`, because `ConfigFlow` doesn't have that helper on 2025.4. The entry's update listener does the single reload.
+
 ## Custom cards
 
 The two cards in `www/` are registered in `async_setup`:

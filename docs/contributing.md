@@ -11,12 +11,21 @@ The integration has no runtime dependencies of its own; it uses the `aiohttp` th
 With [`uv`](https://github.com/astral-sh/uv):
 
 ```bash
-uv venv --python 3.13 .venv-test
+uv venv --python 3.14 .venv-test
 uv pip install --python .venv-test/bin/python -r requirements_test.txt
 .venv-test/bin/python -m pytest
 ```
 
-`requirements_test.txt` doesn't pin PHACC, so a local install gets the newest Home Assistant. CI also tests against the oldest supported version (see below), so something that passes locally can still fail there.
+`requirements_test.txt` doesn't pin PHACC, so a local install gets the newest Home Assistant, which needs Python 3.14 (Home Assistant 2026.5 and later do). CI also tests against the oldest supported version, so something that passes locally can still fail there. To run that version yourself, build a second venv the way CI does:
+
+```bash
+uv venv --python 3.13 .venv-min
+uv pip install --python .venv-min/bin/python \
+  "pytest-homeassistant-custom-component==0.13.236" -r requirements_test.txt
+.venv-min/bin/python -m pytest
+```
+
+It's worth doing for anything that touches a Home Assistant API. Several of the APIs used here are newer than the 2025.4 minimum and have a fallback for older versions (see "Minimum HA version" in [architecture.md](architecture.md)), and the fallback only runs on the old version.
 
 > `uv venv` doesn't put `pip` in the venv. You don't need it for the commands above, but if you want it, run `.venv-test/bin/python -m ensurepip`.
 
@@ -71,12 +80,14 @@ The rules are set in `pyproject.toml`: pyflakes, pycodestyle, isort, bugbear, co
 - **card JS**: the tests in `tests/js/` on Node 24.
 - **pytest**: runs the tests against two Home Assistant versions, the minimum and the latest, by pinning PHACC:
 
-  | Job | PHACC | Home Assistant |
-  |---|---|---|
-  | minimum | `0.13.236` | 2025.4.4 |
-  | latest | `0.13.316` | 2026.2.3 |
+  | Job | Python | PHACC pinned in | Home Assistant |
+  |---|---|---|---|
+  | minimum | 3.13 | `test.yml` (`0.13.236`) | 2025.4.4 |
+  | latest | 3.14 | `requirements_ha_latest.txt` | whatever that pin is (2026.9.4 as of this writing) |
 
-  The minimum matches `hacs.json` (2025.4, because of the recorder statistics API the long-term statistics need; see "Minimum HA version" in [architecture.md](architecture.md)). If you raise the minimum, update this job too.
+  The minimum matches `hacs.json` (2025.4, because of the recorder statistics API the long-term statistics need; see "Minimum HA version" in [architecture.md](architecture.md)). If you raise the minimum, update this job too. It's pinned in `test.yml` so Dependabot can't move it.
+
+  The latest pin is in its own file so Dependabot keeps it current: each week it opens a PR bumping PHACC, in its own `home-assistant` group, and that PR's CI run is where a new Home Assistant release first meets this code. Dependabot holds back brand-new releases for a few days (a cooldown), so the PR shows up a little after the release. PHACC's own Python floor moves with Home Assistant's. When it rises, raise the latest job's `python` in `test.yml` and the repo's `.python-version` (which Dependabot resolves with) in the same PR.
 
 A pull request needs the ruff and pytest jobs, plus `hassfest` and HACS validation, to pass before it can merge. Documentation-only changes run everything too.
 
@@ -127,9 +138,23 @@ The two cards in `custom_components/birdweather/www/` are generated from the Hai
 
 The version lives in one place: `custom_components/birdweather/manifest.json`. The release tag is made from it, never the other way around.
 
-1. **Change the version** in `manifest.json` in its own PR, and merge it.
-2. **CI creates a draft release** (`.github/workflows/release.yaml`) called `v<version>`, pointing at the merge commit. There's no tag yet.
-3. **Write the release notes and publish.** Publishing creates the tag. It's the only step that can't be undone, so a person does it.
+1. **Change the version** in `manifest.json` in its own PR, and merge it. Write the release notes in that commit (see below).
+2. **CI creates a draft release** (`.github/workflows/release.yaml`) pointing at the merge commit. There's no tag yet. A version that isn't a plain `X.Y.Z`, such as `1.0.0-rc1`, is drafted as a pre-release, so HACS only offers it to people who've turned on beta versions.
+3. **Check the draft and publish.** Publishing creates the tag. It's the only step that can't be undone, so a person does it.
+
+The draft's title and notes come from the version-bump commit:
+
+- A subject of the form `Release 0.7.0: Bats and polish` titles the draft `v0.7.0 Bats and polish`. Any other subject gets the bare `v0.7.0`.
+- The body, minus trailers like `Co-Authored-By`, goes above GitHub's generated list of merged PRs.
+- Write the message in a file and commit with `git commit -F <file>`. Git's editor mode deletes lines starting with `#`, which would take markdown headings with them.
+
+Write the notes for where people read them, which is mostly not GitHub. Home Assistant's update dialog (**Settings → Updates**) shows them under the version numbers, and when someone skips versions it stacks every release in between, newest first, each under a big heading HACS adds itself. So:
+
+- Lead with what a user has to know or do: anything that breaks, needs a restart or needs reconfiguring. Then the headline changes. Details and the PR list come last.
+- Use `###` headings or bold inside the notes. HACS already puts a `#` heading on each release.
+- Use full URLs. The dialog doesn't rewrite relative links.
+
+HACS shows this repository's `README.md` as its page, before and after install, and it fetches the README as of the latest release (or the installed one), not `main`. A README change reaches HACS users only with the next release.
 
 If you change your mind before step 3, delete the draft and change the version again. Nothing has been tagged, so there's nothing to clean up.
 
