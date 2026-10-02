@@ -38,6 +38,19 @@ class _Session:
         return _Resp({"data": self._data})
 
 
+class _PagedSession:
+    """Serves one canned payload per request, in order, and records each
+    request's GraphQL body, for exercising cursor pagination."""
+
+    def __init__(self, pages):
+        self._pages = list(pages)
+        self.requests: list[dict] = []
+
+    def post(self, url, json=None, headers=None):
+        self.requests.append(json)
+        return _Resp({"data": self._pages.pop(0)})
+
+
 def _client(data) -> BirdWeatherClient:
     return BirdWeatherClient(_Session(data))
 
@@ -92,6 +105,100 @@ async def test_accessible_station_without_detections() -> None:
     client = _client(data)
     assert await client.get_raw_detections("1") == {"detections": []}
     assert await client.get_baseline_count("1") == []
+
+
+def _detection_page(ids, *, cursor=None, has_next=False):
+    return {"station": {"detections": {
+        "nodes": [{"id": str(i), "species": _species("Robin")} for i in ids],
+        "pageInfo": {"endCursor": cursor, "hasNextPage": has_next},
+    }}}
+
+
+@pytest.mark.parametrize("method", ["get_detections", "get_raw_detections"])
+async def test_detection_pagination_respects_total_and_page_size(method) -> None:
+    session = _PagedSession([
+        _detection_page(range(100), cursor="page-1", has_next=True),
+        _detection_page(range(100, 150), cursor="page-2", has_next=True),
+    ])
+    result = await getattr(BirdWeatherClient(session), method)("1", first=150)
+    rows = result["detections"] if isinstance(result, dict) else result
+    assert len(rows) == 150
+    assert [r["variables"] for r in session.requests] == [
+        {"id": "1", "first": 100, "after": None},
+        {"id": "1", "first": 50, "after": "page-1"},
+    ]
+    assert "pageInfo { hasNextPage endCursor }" in session.requests[0]["query"]
+
+
+async def test_raw_detections_default_fetches_three_pages() -> None:
+    session = _PagedSession([
+        _detection_page(range(i * 100, (i + 1) * 100), cursor=f"p{i}", has_next=True)
+        for i in range(3)
+    ])
+    result = await BirdWeatherClient(session).get_raw_detections("1")
+    assert len(result["detections"]) == 300
+    assert len(session.requests) == 3
+
+
+async def test_detection_pagination_deduplicates_overlapping_ids() -> None:
+    session = _PagedSession([
+        _detection_page(range(100), cursor="page-1", has_next=True),
+        _detection_page([99, *range(100, 199)], cursor="page-2", has_next=True),
+    ])
+    result = await BirdWeatherClient(session).get_detections("1", first=200)
+    assert len(result) == 199
+    assert len(session.requests) == 2
+
+
+@pytest.mark.parametrize("cursor", [None, "", 123])
+async def test_detection_pagination_stops_without_valid_cursor(cursor) -> None:
+    session = _PagedSession([_detection_page(range(100), cursor=cursor, has_next=True)])
+    result = await BirdWeatherClient(session).get_raw_detections("1")
+    assert len(result["detections"]) == 100
+    assert len(session.requests) == 1
+
+
+@pytest.mark.parametrize("cursors", [["a", "a"], ["a", "b", "a"]])
+async def test_detection_pagination_stops_on_repeated_cursor(cursors) -> None:
+    session = _PagedSession([
+        _detection_page(range(i * 100, (i + 1) * 100), cursor=cursor, has_next=True)
+        for i, cursor in enumerate(cursors)
+    ])
+    result = await BirdWeatherClient(session).get_raw_detections("1", first=400)
+    assert len(result["detections"]) == len(cursors) * 100
+    assert len(session.requests) == len(cursors)
+
+
+@pytest.mark.parametrize("second_ids", [[], range(100)])
+async def test_detection_pagination_stops_without_new_data(second_ids) -> None:
+    session = _PagedSession([
+        _detection_page(range(100), cursor="a", has_next=True),
+        _detection_page(second_ids, cursor="b", has_next=True),
+    ])
+    result = await BirdWeatherClient(session).get_raw_detections("1")
+    assert len(result["detections"]) == 100
+    assert len(session.requests) == 2
+
+
+async def test_detection_pagination_stops_at_last_page() -> None:
+    session = _PagedSession([_detection_page(range(40), cursor="a", has_next=False)])
+    result = await BirdWeatherClient(session).get_raw_detections("1")
+    assert len(result["detections"]) == 40
+    assert len(session.requests) == 1
+
+
+@pytest.mark.parametrize("first", [0, -1])
+async def test_detection_pagination_nonpositive_limit_does_not_fetch(first) -> None:
+    session = _PagedSession([])
+    assert await BirdWeatherClient(session).get_detections("1", first=first) == []
+    assert session.requests == []
+
+
+async def test_detection_pagination_truncates_oversized_response() -> None:
+    session = _PagedSession([_detection_page(range(100))])
+    result = await BirdWeatherClient(session).get_detections("1", first=20)
+    assert len(result) == 20
+    assert session.requests[0]["variables"]["first"] == 20
 
 
 # ---- get_baseline_count / get_species_counts ------------------------------- #
