@@ -9,6 +9,7 @@ _async_update_data deterministically, but with a stubbed client (no network).
 
 from __future__ import annotations
 
+from datetime import timedelta
 from types import SimpleNamespace
 from typing import Any
 from unittest.mock import AsyncMock
@@ -80,6 +81,8 @@ def make_coordinator(
         options=options or {}, data={"bat_support": False}, entry_id=ENTRY_ID
     )
     c._client = client or make_client()
+    # The poll interval __init__ would set (the integration's default).
+    c.update_interval = timedelta(minutes=10)
 
     c._baseline_ranks = {}
     c._baseline_species_count = 0
