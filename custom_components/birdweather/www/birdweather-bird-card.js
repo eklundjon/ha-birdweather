@@ -50,6 +50,18 @@ function _isBirdWeatherListEntity(hass, state) {
   return entry.platform === "birdweather";
 }
 
+// Card-picker suggestions ("By entity" in "Add to dashboard", Home Assistant
+// 2026.6+): whether an entity is one of this integration's sensors with a
+// `detections` list. Stricter than _isBirdWeatherListEntity, which lets entities
+// through when the registry can't be read: a suggestion must never appear for
+// another integration's entity. Older Home Assistant ignores the hook.
+function _isOwnListEntity(hass, entityId) {
+  return (
+    Array.isArray(hass?.states?.[entityId]?.attributes?.detections) &&
+    hass?.entities?.[entityId]?.platform === "birdweather"
+  );
+}
+
 // ── Editor ────────────────────────────────────────────────────────────────────
 
 class BirdWeatherBirdCardEditor extends HTMLElement {
@@ -308,6 +320,20 @@ class BirdWeatherBirdCard extends HTMLElement {
 
   static getStubConfig() {
     return { entity: "", tap_action: { action: "more-info" }, position: 1 };
+  }
+
+  // Home Assistant tells a card which layout it's in: "grid" in a Sections
+  // view, where the grid cell gives the card a fixed height. Anywhere else (a
+  // Masonry view, the "By entity" card-picker preview) the parent's height is
+  // auto, and this card's size-contained host would collapse to a sliver with
+  // no photo. There it sizes itself from its width instead (see :host([free])).
+  set layout(value) {
+    this._layout = value;
+    this.toggleAttribute("free", value !== "grid");
+  }
+
+  get layout() {
+    return this._layout;
   }
 
   setConfig(config) {
@@ -600,6 +626,10 @@ class BirdWeatherBirdCard extends HTMLElement {
           height: 100%;
           container-type: size;
         }
+        :host([free]) {
+          height: auto;
+          aspect-ratio: 1;
+        }
         ha-card {
           overflow: hidden;
           height: 100%;
@@ -615,6 +645,12 @@ class BirdWeatherBirdCard extends HTMLElement {
           flex-direction: column;
           height: 100%;
           overflow: hidden;
+        }
+        /* A bat's behavior adds a line under the confidence, so the portrait
+           layouts reserve one more line of text below the photo. */
+        .layout.has-behavior {
+          --text-reserve: clamp(128px, 40cqh, 230px);
+          --squat-text-reserve: clamp(110px, 36cqh, 190px);
         }
 
         /*
@@ -637,7 +673,7 @@ class BirdWeatherBirdCard extends HTMLElement {
            * the photo. Sized for the worst case so the species name never
            * collides with the photo / its credit overlay.
            */
-          height: min(100cqw, calc(100cqh - clamp(104px, 34cqh, 200px)));
+          height: min(100cqw, calc(100cqh - var(--text-reserve, clamp(104px, 34cqh, 200px))));
           width: 100%;
           align-self: center;
           overflow: hidden;
@@ -729,7 +765,7 @@ class BirdWeatherBirdCard extends HTMLElement {
          */
         @container (min-aspect-ratio: 1.2) and (max-aspect-ratio: 3/2) {
           .img-wrap {
-            height: calc(100cqh - clamp(86px, 30cqh, 160px));
+            height: calc(100cqh - var(--squat-text-reserve, clamp(86px, 30cqh, 160px)));
             width: 100%;
           }
         }
@@ -881,7 +917,7 @@ class BirdWeatherBirdCard extends HTMLElement {
         }
       </style>
       <ha-card class="${actionable ? "actionable" : ""}"${actionable ? ' role="button" tabindex="0"' : ""}>
-        <div class="layout">
+        <div class="layout${bird?.behavior ? " has-behavior" : ""}">
           ${empty ? `
             <div class="empty">No recent detections</div>
           ` : `
@@ -1003,6 +1039,11 @@ if (!customElements.get("birdweather-bird-card")) {
       type: "birdweather-bird-card",
       name: "BirdWeather Bird Card",
       description: "Displays a BirdWeather bird or bat detection with photo, species name, and timestamp.",
+      documentationURL: "https://github.com/eklundjon/ha-birdweather/blob/main/docs/cards.md",
+      getEntitySuggestion: (hass, entityId) =>
+        _isOwnListEntity(hass, entityId)
+          ? { config: { type: "custom:birdweather-bird-card", entity: entityId } }
+          : null,
     });
   }
 }

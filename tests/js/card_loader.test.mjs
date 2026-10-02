@@ -150,3 +150,52 @@ for (const [file, tag] of [
     );
   });
 }
+
+// Card-picker suggestions ("By entity", Home Assistant 2026.6+).
+async function customCardEntry(file, type) {
+  globalThis.HTMLElement ??= class {};
+  globalThis.window = globalThis;
+  delete globalThis.customCards;
+  await runCardModule(file);
+  return window.customCards.find((c) => c.type === type);
+}
+
+function fakeHass() {
+  const sensor = (translation_key, platform = "birdweather", detections = []) => ({
+    state: { attributes: { detections } },
+    entry: { platform, translation_key },
+  });
+  const all = {
+    "sensor.box_top_species_today": sensor("daily_top_species"),
+    "sensor.box_last_bat_detection": sensor("last_bat_detection"),
+    "sensor.box_detections_today": { state: { attributes: {} }, entry: { platform: "birdweather" } },
+    "sensor.other_list": sensor("whatever", "some_other_integration"),
+  };
+  return {
+    states: Object.fromEntries(Object.entries(all).map(([id, v]) => [id, v.state])),
+    entities: Object.fromEntries(Object.entries(all).map(([id, v]) => [id, v.entry])),
+  };
+}
+
+test("the bird card suggests itself for this integration's list sensors only", async () => {
+  const entry = await customCardEntry("birdweather-bird-card.js", "birdweather-bird-card");
+  const hass = fakeHass();
+  assert.deepEqual(entry.getEntitySuggestion(hass, "sensor.box_last_bat_detection"), {
+    config: { type: "custom:birdweather-bird-card", entity: "sensor.box_last_bat_detection" },
+  });
+  assert.ok(entry.getEntitySuggestion(hass, "sensor.box_top_species_today"));
+  assert.equal(entry.getEntitySuggestion(hass, "sensor.box_detections_today"), null);
+  assert.equal(entry.getEntitySuggestion(hass, "sensor.other_list"), null);
+  assert.equal(entry.getEntitySuggestion(hass, "sensor.missing"), null);
+  assert.match(entry.documentationURL, /docs\/cards\.md$/);
+});
+
+test("the list card skips single-record sensors", async () => {
+  const entry = await customCardEntry("birdweather-details-card.js", "birdweather-bird-list-card");
+  const hass = fakeHass();
+  assert.deepEqual(entry.getEntitySuggestion(hass, "sensor.box_top_species_today"), {
+    config: { type: "custom:birdweather-bird-list-card", entity: "sensor.box_top_species_today" },
+  });
+  assert.equal(entry.getEntitySuggestion(hass, "sensor.box_last_bat_detection"), null);
+  assert.equal(entry.getEntitySuggestion(hass, "sensor.other_list"), null);
+});

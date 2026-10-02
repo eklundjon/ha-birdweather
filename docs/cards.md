@@ -167,6 +167,8 @@ sections:
 
 Both cards have a visual editor the dashboard exposes automatically. The entity picker is **pre-filtered to BirdWeather sensors that expose a `detections` list**, so only the 8 list-bearing sensors are offered. The single-bird card's editor also includes the **Tap action** picker and `position`; the list card's editor exposes the title, max items, row size, and the link/confidence/description/activity/audio toggles.
 
+On Home Assistant 2026.6 and later you can also start from a sensor: in **Add to dashboard → By entity**, pick a BirdWeather sensor and the BirdWeather cards that fit it are offered under **Community**. The bird card is offered for every sensor with a `detections` list, and the list card for all of those except `last_bird_detection` and `last_bat_detection`, which hold a single detection.
+
 ---
 
 ## Theming
