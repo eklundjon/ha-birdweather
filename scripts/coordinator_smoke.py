@@ -7,10 +7,11 @@ complete sensor data dict. Run with the HA venv.
 
 import asyncio
 import sys
+from pathlib import Path
 
 import aiohttp
 
-sys.path.insert(0, ".")
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from custom_components.birdweather.client import BirdWeatherClient  # noqa: E402
 from custom_components.birdweather.coordinator import (
     BirdWeatherCoordinator,  # noqa: E402

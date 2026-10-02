@@ -32,8 +32,9 @@
 
 set -euo pipefail
 
-SRC="${1:-../ha-haikubox/custom_components/haikubox/www}"
-DST="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/custom_components/birdweather/www"
+REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+SRC="${1:-$REPO/../ha-haikubox/custom_components/haikubox/www}"
+DST="$REPO/custom_components/birdweather/www"
 
 declare -a MAP=(
   "haikubox-bird-card.js:birdweather-bird-card.js"
