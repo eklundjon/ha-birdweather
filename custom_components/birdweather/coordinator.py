@@ -215,8 +215,39 @@ class BirdWeatherCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     # ------------------------------------------------------------------
 
     async def _async_setup(self) -> None:
-        """One-time setup before the first refresh: rehydrate persisted stores."""
+        """One-time setup before the first refresh: rehydrate persisted stores,
+        and decide bat support for an entry set up before it existed."""
         await self._load_stores()
+        if CONF_BAT_SUPPORT not in self.config_entry.data:
+            await self._async_decide_bat_support()
+
+    async def _async_decide_bat_support(self) -> None:
+        """One-time choice for an entry set up before bat support existed.
+
+        Such a station has been counting any bats it hears as birds, so turn
+        bat support on if BirdWeather says it hears bats, and save the answer
+        either way so this never runs again (or overrides a later choice made
+        in reconfigure). Runs during the first refresh, before the platforms
+        set up and before the update listener is attached, so the bat sensors
+        appear on this same start without a reload. If BirdWeather can't be
+        reached, nothing is saved and it's tried again next start.
+        """
+        try:
+            found = await self._client.station_has_bats(self.station_id)
+        except (aiohttp.ClientError, BirdWeatherError) as err:
+            _LOGGER.debug("Could not check the station for bats: %s", err)
+            return
+        self._bat_support = found
+        self.hass.config_entries.async_update_entry(
+            self.config_entry,
+            data={**self.config_entry.data, CONF_BAT_SUPPORT: found},
+        )
+        if found:
+            _LOGGER.info(
+                "%s hears bats, so bat support is now on; turn it off with "
+                "Reconfigure if you don't want it",
+                self.device_name,
+            )
 
     def _merge_event_buffer(self, poll_events: list[dict[str, Any]]) -> bool:
         """Merge this poll's events into the rolling last-N buffer that backs
