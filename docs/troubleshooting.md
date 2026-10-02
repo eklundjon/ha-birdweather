@@ -12,6 +12,10 @@ For the first error, check two things:
 1. **The station ID.** Open your station on [app.birdweather.com](https://app.birdweather.com). The ID is the number at the end of the URL (`.../stations/<id>`). You can also pick a nearby station from the list in the setup dialog, or type a name to search for it, instead of pasting an ID.
 2. **Whether the station is public.** The integration reads BirdWeather's public API, so the station has to be public.
 
+## A new station has no detections yet
+
+The integration still sets up its sensors, including any PUC hardware readings. Recent detections shows zero, and last detection stays `unknown` until BirdWeather has a public detection for the station. An empty history is fine, including after a Home Assistant restart.
+
 ## Sensors show `0` or `unknown` right after install
 
 Each poll fetches the last 24 hours of detections plus BirdWeather's own totals for each period, so most sensors fill in on the first poll if the station has been active. What to expect:

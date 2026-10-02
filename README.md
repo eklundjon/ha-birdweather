@@ -6,7 +6,12 @@
 
 This is a Home Assistant integration for [BirdWeather](https://www.birdweather.com/) stations: PUCs, BirdNET-Pis, and any other registered station. It shows what the station has been hearing, keeps daily and rolling species counts, tracks activity and diversity, points out unusual visitors, and comes with two dashboard cards that show bird photos.
 
-It reads BirdWeather's public GraphQL API without logging in, so you don't need an account or an API token. The station does have to be public.
+**Before you start:**
+
+- **The station has to be public.** The integration reads BirdWeather's public API without logging in, so you don't need an account or an API token, but it can't see a private station.
+- **You'll need the station's ID**, or you can pick a nearby public station from a list during setup. The ID is the number at the end of the station's URL on [app.birdweather.com](https://app.birdweather.com) (`.../stations/<id>`).
+- **Home Assistant 2025.4 or later.**
+- On a bat-edition PUC, leave **Bat support** ticked during setup.
 
 ## Features
 
@@ -92,37 +97,13 @@ entities:
   - birdweather:station_<id>_daily_detections
 ```
 
-### Automations and blueprints
+### Automations
 
-The automation editor offers three device triggers (**When → Device**): new species, unusual visitor and watched species. Each one is a filter on the `birdweather_event` event, which carries the species, its scientific name, a photo (`image_url`), reference links (`ebird_url`, `wikipedia_url`), the recording (`audio_url`), and extras for some triggers (`days_absent`, `lifetime_species_count`).
-
-There are four ready-made blueprints to start from. Home Assistant doesn't install blueprints with an integration, it imports them from a URL, so click a badge to import one ([full instructions](docs/automations.md#importing-a-blueprint)):
-
-| Blueprint | Import |
-| --- | --- |
-| New species notification | [![Open your Home Assistant instance and show the blueprint import dialog with a specific blueprint pre-filled.](https://my.home-assistant.io/badges/blueprint_import.svg)](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https%3A%2F%2Fgithub.com%2Feklundjon%2Fha-birdweather%2Fblob%2Fmain%2Fblueprints%2Fautomation%2Fbirdweather%2Fnew_species_notification.yaml) |
-| Unusual visitor notification | [![Open your Home Assistant instance and show the blueprint import dialog with a specific blueprint pre-filled.](https://my.home-assistant.io/badges/blueprint_import.svg)](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https%3A%2F%2Fgithub.com%2Feklundjon%2Fha-birdweather%2Fblob%2Fmain%2Fblueprints%2Fautomation%2Fbirdweather%2Funusual_visitor_notification.yaml) |
-| Watched species notification | [![Open your Home Assistant instance and show the blueprint import dialog with a specific blueprint pre-filled.](https://my.home-assistant.io/badges/blueprint_import.svg)](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https%3A%2F%2Fgithub.com%2Feklundjon%2Fha-birdweather%2Fblob%2Fmain%2Fblueprints%2Fautomation%2Fbirdweather%2Fwatched_species_notification.yaml) |
-| Play the call on a media player | [![Open your Home Assistant instance and show the blueprint import dialog with a specific blueprint pre-filled.](https://my.home-assistant.io/badges/blueprint_import.svg)](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https%3A%2F%2Fgithub.com%2Feklundjon%2Fha-birdweather%2Fblob%2Fmain%2Fblueprints%2Fautomation%2Fbirdweather%2Fplay_call_on_media_player.yaml) |
-
-The three notification blueprints send a push notification to your phone with the bird's photo, and differ only in their trigger. The new-species one adds eBird and Wikipedia buttons and the lifetime species count, and the unusual-visitor one attaches the recording when audio is turned on. The fourth plays a detection's call on a speaker. Every `birdweather_event` carries the same fields, so treat these as examples and change them however you like.
-
-*Note:* `audio_url` is BirdWeather's soundscape clip (FLAC). It's only there when audio is turned on in the options and the station has a recording for that detection, and a station with audio sharing off produces silent clips. FLAC may not play in iOS notification attachments or on every media player.
+The automation editor offers device triggers (**When → Device**) for new species, unusual visitors and watched species, and there are four blueprints for photo notifications and for playing a call on a speaker, each with a one-click import badge. See [docs/automations.md](docs/automations.md).
 
 ## Options
 
-After setup, open the integration's **Configure** dialog:
-
-- **Notability rarity weight.** How much "notable species" leans on rarity rather than recency. 100% is rarity alone. The default is 70%.
-- **Unusual-visitor days.** How long a species the station knows has to go unheard before it counts as an unusual visitor when it comes back. The default is 30 days.
-- **Hide detections below confidence.** Leaves low-confidence "maybe" detections out of the recent, last, notable and new sensors and the cards. 0% (the default) shows everything. The 24-hour **total** and **diversity** come straight from BirdWeather's own counts, so this filter doesn't change them. They always use the station's own confidence threshold.
-- **Only alert above confidence.** The new-species, unusual-visitor and watched-species triggers don't fire below this confidence. 0% (the default) alerts on everything. It's independent of the hide filter, so you can keep seeing maybes and only get notified about confident detections.
-- **Watched species.** Species you want to hear about, chosen from a list of ones your station has heard, typed into a free-text list for ones it hasn't, or both. When one is heard, the **"Watched species detected"** device trigger fires. Connect it to a notification in the automation editor.
-- **Advanced** (collapsed by default). Window lengths and how often to poll. The defaults suit most stations.
-  - **Recent window** (1–24 hours, default 1). How far back "Recent detections" looks, and how long a species stays recent before it can set off a trigger again.
-  - **Poll interval** (5–60 minutes, default 10). How often the station is checked. Changing it reloads the integration, so the new interval takes effect right away.
-  - **Rarity baseline window** (1–24 months, default 1). How many months of BirdWeather's top-species counts rarity is measured against.
-  - **New-species momentum window** (7–365 days, default 30). The window for the "New species" count sensor.
+After setup, open the integration's **Configure** dialog for the notability balance, the unusual-visitor threshold, the two confidence filters, audio, watched species, and (under **Advanced**) the time windows and poll interval. Every option, with its default and range, is in [docs/advanced.md](docs/advanced.md).
 
 ## Documentation
 
@@ -132,7 +113,7 @@ After setup, open the integration's **Configure** dialog:
 | The two cards, YAML examples, tap actions, a sample dashboard | [docs/cards.md](docs/cards.md) |
 | Device triggers, the `birdweather_event` event, notification blueprints | [docs/automations.md](docs/automations.md) |
 | Bat support: what it adds, and how bats are kept out of bird counts | [docs/bats.md](docs/bats.md) |
-| Advanced options (windows and polling), the confidence filters, changing the station | [docs/advanced.md](docs/advanced.md) |
+| Every option and its default, polling on your own schedule, changing the station or bat support | [docs/advanced.md](docs/advanced.md) |
 | Setup errors, the first poll after install, sensors that go offline, cards not updating, diagnostics | [docs/troubleshooting.md](docs/troubleshooting.md) |
 | Which BirdWeather queries the integration makes, how often, and what happens when they fail | [docs/api.md](docs/api.md) |
 | How the code is organized | [docs/architecture.md](docs/architecture.md) |
@@ -140,17 +121,7 @@ After setup, open the integration's **Configure** dialog:
 
 ## Troubleshooting
 
-**A new station has no detections yet.** The integration still sets up its sensors, including any PUC hardware readings. Recent detections shows zero and last detection stays *unknown* until BirdWeather has a public detection. An empty history is fine, including after a Home Assistant restart.
-
-**A bird photo looks oddly cropped, with a beak, tail or head cut off.** The photos come from BirdWeather, which serves one square crop of a contributor's photo for each species, and a few are cropped tightly at the source. The cards always show the whole image and never crop it further (the soft blurred edges are just fill), so a clipped bird means BirdWeather's own image is cropped that way. It can't be fixed from Home Assistant. If a photo looks wrong, it's worth reporting to BirdWeather.
-
-**A card shows a 🐦 placeholder instead of a photo.** BirdWeather has no image for that species yet, or it didn't load. It shows up once a photo is available and the next poll saves it.
-
-**"Notable species" went to *unknown* but "Last detection" still shows a bird.** That's on purpose. *Last detection* is the last bird heard, however long ago, and it's saved, so it survives restarts and outages. *Notable species* is the most notable bird of the last 24 hours, so it goes to *unknown* when the station has reported nothing for 24 hours. That's a useful sign the station has gone quiet or offline.
-
-**A card looks out of date right after updating the integration.** Hard-refresh the dashboard. Your browser caches the card code and only fetches it again when the integration's version changes.
-
-**Filing a bug report.** Open the BirdWeather device page and choose **⋮ → Download diagnostics**. The download is a snapshot of the integration's state, including the latest poll's data and a short coordinator summary. The station ID and name are removed, so it's safe to attach.
+See [docs/troubleshooting.md](docs/troubleshooting.md) for setup errors, sensors that are empty or `unknown`, cards that don't load or look out of date, oddly cropped photos, and how to download diagnostics for a bug report.
 
 ## Attribution & data licensing
 
