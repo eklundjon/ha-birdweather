@@ -69,7 +69,9 @@ _PUC_SENSORS = {
 }
 
 
-async def _setup_entry(hass: HomeAssistant, *, sensors=None, **data) -> MockConfigEntry:
+async def _setup_entry(
+    hass: HomeAssistant, *, sensors=None, has_bats=False, **data
+) -> MockConfigEntry:
     entry = MockConfigEntry(
         domain=DOMAIN,
         unique_id=STATION_ID,
@@ -81,6 +83,7 @@ async def _setup_entry(hass: HomeAssistant, *, sensors=None, **data) -> MockConf
         baseline=_BASELINE, detections=_DETECTIONS, overview=_OVERVIEW,
         time_of_day={"by_species": {}, "station": ([0] * 7 + [99] + [0] * 16)},
         sensors=sensors if sensors is not None else {},
+        has_bats=has_bats,
     )
     with (
         # The component-level async_setup only registers card JS + static paths
@@ -233,3 +236,27 @@ async def test_bat_sensors_follow_bat_support(hass: HomeAssistant) -> None:
 
     assert entry.state is ConfigEntryState.LOADED
     assert not _BAT_UNIQUE_IDS & _unique_ids()
+
+
+async def test_existing_station_hearing_bats_gets_bat_support(hass: HomeAssistant) -> None:
+    """An entry from before bat support, at a station that hears bats, has bat
+    support turned on at upgrade, with its sensors on the same start."""
+    entry = await _setup_entry(hass, has_bats=True)
+
+    assert entry.data[CONF_BAT_SUPPORT] is True
+    registry = er.async_get(hass)
+    uids = {e.unique_id for e in er.async_entries_for_config_entry(registry, entry.entry_id)}
+    assert _BAT_UNIQUE_IDS <= uids
+    assert entry.state is ConfigEntryState.LOADED
+
+
+async def test_existing_station_without_bats_stays_off(hass: HomeAssistant) -> None:
+    entry = await _setup_entry(hass, has_bats=False)
+    assert entry.data[CONF_BAT_SUPPORT] is False
+
+
+async def test_bat_support_choice_is_never_overridden(hass: HomeAssistant) -> None:
+    """Someone who turned bat support off keeps it off, even at a bat station."""
+    entry = await _setup_entry(hass, has_bats=True, **{CONF_BAT_SUPPORT: False})
+    assert entry.data[CONF_BAT_SUPPORT] is False
+    assert entry.runtime_data._client.station_has_bats.await_count == 0

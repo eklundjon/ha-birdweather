@@ -168,6 +168,15 @@ query stationOverview(
 # Time-of-day ("diel") activity: one BinnedSpeciesCount per species over the
 # period, each with sparse half-hourly bins {key (hour as float), count}. Powers
 # the per-species hourly sparkline and (summed) the station-wide activity curve.
+# Whether a station hears bats: a bat-edition PUC, or any bat detections in a
+# recent window (other station types can report bats too).
+_HAS_BATS_QUERY = """
+query stationHasBats($id: ID!, $ids: [ID!], $period: InputDuration) {
+  station(id: $id) { edition }
+  counts(stationIds: $ids, classifications: ["bat"], period: $period) { detections }
+}
+"""
+
 _TIME_OF_DAY_QUERY = """
 query stationTimeOfDay($id: ID!, $period: InputDuration) {
   timeOfDayDetectionCounts(stationIds: [$id], period: $period) {
@@ -549,6 +558,22 @@ class BirdWeatherClient:
             "light": sensors.get("light"),
             "system": sensors.get("system"),
         }
+
+    async def station_has_bats(self, station_id: str, days: int = 30) -> bool:
+        """Whether a station hears bats: a bat-edition PUC, or bat detections
+        in the trailing `days`. For deciding bat support on an entry set up
+        before it existed."""
+        data = await self._query(
+            _HAS_BATS_QUERY,
+            {
+                "id": station_id,
+                "ids": [station_id],
+                "period": {"count": days, "unit": "day"},
+            },
+        )
+        edition = (data.get("station") or {}).get("edition")
+        detections = (data.get("counts") or {}).get("detections") or 0
+        return edition == "bat" or detections > 0
 
     async def get_time_of_day(self, station_id: str, days: int = 7) -> dict[str, Any]:
         """Diel activity over the trailing `days`, folded to 24 hourly buckets.

@@ -43,6 +43,7 @@ def make_client(
     overview: dict[str, Any] | None = None,
     time_of_day: dict[str, Any] | None = None,
     sensors: dict[str, Any] | None = None,
+    has_bats: bool = False,
 ) -> AsyncMock:
     """An AsyncMock BirdWeatherClient with canned poll responses."""
     client = AsyncMock()
@@ -57,6 +58,7 @@ def make_client(
         return_value=time_of_day if time_of_day is not None else {"by_species": {}, "station": []}
     )
     client.get_sensors = AsyncMock(return_value=sensors if sensors is not None else {})
+    client.station_has_bats = AsyncMock(return_value=has_bats)
     return client
 
 
@@ -68,7 +70,8 @@ def make_coordinator(
     c.hass = hass
     c.station_id = "12345"
     c.device_name = "Test Station"
-    c.config_entry = SimpleNamespace(options=options or {})
+    # data records a bat-support choice, so _async_setup doesn't make one.
+    c.config_entry = SimpleNamespace(options=options or {}, data={"bat_support": False})
     c._client = client or make_client()
 
     c._baseline_ranks = {}

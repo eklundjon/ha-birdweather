@@ -221,6 +221,15 @@ async def test_raw_detections_pass_the_class_filter() -> None:
     assert session.requests[0]["variables"]["classifications"] == ["bat"]
 
 
+@pytest.mark.parametrize(
+    ("edition", "bat_detections", "expected"),
+    [("bat", 0, True), ("standard", 12, True), ("standard", 0, False), (None, None, False)],
+)
+async def test_station_has_bats(edition, bat_detections, expected) -> None:
+    data = {"station": {"edition": edition}, "counts": {"detections": bat_detections}}
+    assert await _client(data).station_has_bats("1") is expected
+
+
 # ---- get_baseline_count ---------------------------------------------------- #
 
 

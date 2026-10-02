@@ -6,6 +6,8 @@ BirdWeather's bat-edition PUC hears bats as well as birds, and BirdWeather label
 
 After you pick a station during setup, a second step asks about **Bat support**. It's ticked already if the station is a bat-edition PUC. To change it later, open the integration and choose **Reconfigure**.
 
+If you set the station up before bat support existed, the integration checks once, on the first start after upgrading: if the station is a bat-edition PUC or BirdWeather has bat detections for it in the last 30 days, bat support is turned on for you. Either way you can change it with **Reconfigure**, and it won't be changed for you again.
+
 - **On:** bats are fetched on their own and get their own sensors and events (below).
 - **Off:** bats aren't fetched at all, and turning it off removes the bat sensors.
 
