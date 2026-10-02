@@ -975,10 +975,15 @@ class BirdWeatherBirdCard extends HTMLElement {
 if (!customElements.get("birdweather-bird-card")) {
   customElements.define("birdweather-bird-card", BirdWeatherBirdCard);
 
+  // The define guard alone doesn't cover this: when HA's scoped-registry
+  // polyfill hides a native define, the loader runs this module a second time
+  // (see birdweather-card-loader.js), and the card picker would list it twice.
   window.customCards ??= [];
-  window.customCards.push({
-    type: "birdweather-bird-card",
-    name: "BirdWeather Bird Card",
-    description: "Displays a BirdWeather bird detection with photo, species name, and timestamp.",
-  });
+  if (!window.customCards.some((c) => c.type === "birdweather-bird-card")) {
+    window.customCards.push({
+      type: "birdweather-bird-card",
+      name: "BirdWeather Bird Card",
+      description: "Displays a BirdWeather bird detection with photo, species name, and timestamp.",
+    });
+  }
 }

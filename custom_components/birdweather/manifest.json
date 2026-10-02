@@ -9,8 +9,9 @@
   ],
   "config_flow": true,
   "dependencies": [
+    "frontend",
     "http",
-    "frontend"
+    "lovelace"
   ],
   "documentation": "https://github.com/eklundjon/ha-birdweather",
   "integration_type": "device",
