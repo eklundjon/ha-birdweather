@@ -18,6 +18,7 @@ from custom_components.birdweather.const import (
     CONF_AUDIO_ENABLED,
     CONF_FEED_MIN_CONFIDENCE,
 )
+from custom_components.birdweather.coordinator import _UPDATE_FAILED_TAKES_RETRY_AFTER
 
 from .coordinator_helpers import make_client, make_coordinator
 
@@ -271,3 +272,33 @@ async def test_diel_peak_hour_surfaced() -> None:
     data = await coord._async_update_data()
     assert data["peak_activity_hour"] == 7
     assert data["hourly_activity"] == hourly
+
+
+async def _poll_with_detections_error(err: Exception) -> UpdateFailed:
+    client = make_client(detections={"detections": []})
+    client.get_raw_detections.side_effect = err
+    coord = make_coordinator(client=client)
+    coord.update_interval = timedelta(minutes=10)
+    with pytest.raises(UpdateFailed) as excinfo:
+        await coord._async_update_data()
+    return excinfo.value
+
+
+async def test_rate_limit_delays_next_refresh() -> None:
+    """A Retry-After longer than the poll interval sets retry_after (2025.12+)."""
+    err = await _poll_with_detections_error(BirdWeatherError("429", retry_after=1800))
+    if _UPDATE_FAILED_TAKES_RETRY_AFTER:
+        assert err.retry_after == 1800
+    else:
+        assert getattr(err, "retry_after", None) is None
+
+
+async def test_short_retry_after_is_ignored() -> None:
+    """A Retry-After shorter than the poll interval would poll sooner, so it's dropped."""
+    err = await _poll_with_detections_error(BirdWeatherError("429", retry_after=30))
+    assert getattr(err, "retry_after", None) is None
+
+
+async def test_error_without_retry_after_raises_plainly() -> None:
+    err = await _poll_with_detections_error(BirdWeatherError("transport error: down"))
+    assert getattr(err, "retry_after", None) is None

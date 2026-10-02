@@ -22,7 +22,8 @@ from __future__ import annotations
 import html
 import math
 import re
-from datetime import date
+from datetime import UTC, date, datetime
+from email.utils import parsedate_to_datetime
 from typing import Any
 
 import aiohttp
@@ -254,8 +255,42 @@ query stationSensors($id: ID!) {
 """
 
 
+# A Retry-After longer than this counts as this, so a bad header can't stall
+# updates for hours.
+_MAX_RETRY_AFTER = 3600
+
+
+def retry_after_seconds(err: aiohttp.ClientResponseError) -> float | None:
+    """How long the API asked us to wait (its Retry-After header), in seconds.
+
+    The header is either a number of seconds or an HTTP date. Returns None when
+    it's missing or unparseable, and caps it at an hour.
+    """
+    value = (err.headers or {}).get("Retry-After")
+    if not value:
+        return None
+    try:
+        seconds = float(value)
+    except ValueError:
+        try:
+            when = parsedate_to_datetime(value)
+        except (TypeError, ValueError):
+            return None
+        if when.tzinfo is None:
+            when = when.replace(tzinfo=UTC)
+        seconds = (when - datetime.now(UTC)).total_seconds()
+    return min(max(seconds, 0.0), _MAX_RETRY_AFTER)
+
+
 class BirdWeatherError(Exception):
-    """Raised when the API returns transport or GraphQL-level errors."""
+    """Raised when the API returns transport or GraphQL-level errors.
+
+    `retry_after` carries the API's Retry-After, in seconds, when it sent one.
+    """
+
+    def __init__(self, message: str, *, retry_after: float | None = None) -> None:
+        super().__init__(message)
+        self.retry_after = retry_after
 
 
 class BirdWeatherClient:
@@ -274,6 +309,10 @@ class BirdWeatherClient:
             ) as resp:
                 resp.raise_for_status()
                 payload = await resp.json()
+        except aiohttp.ClientResponseError as err:
+            raise BirdWeatherError(
+                f"transport error: {err}", retry_after=retry_after_seconds(err)
+            ) from err
         except aiohttp.ClientError as err:
             raise BirdWeatherError(f"transport error: {err}") from err
         if payload.get("errors"):

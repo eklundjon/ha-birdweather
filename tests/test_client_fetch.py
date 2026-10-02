@@ -6,11 +6,19 @@ canned `{"data": {...}}` payload through a fake session and assert the parse.
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import UTC, date, datetime, timedelta
+from email.utils import format_datetime
 
+import aiohttp
 import pytest
+from multidict import CIMultiDict, CIMultiDictProxy
+from yarl import URL
 
-from custom_components.birdweather.client import BirdWeatherClient, BirdWeatherError
+from custom_components.birdweather.client import (
+    BirdWeatherClient,
+    BirdWeatherError,
+    retry_after_seconds,
+)
 
 
 class _Resp:
@@ -395,3 +403,54 @@ async def test_nearby_stations_sorts_by_distance() -> None:
     assert [s["id"] for s in out] == ["near", "far", "nocoord"]
     assert out[0]["distance_km"] < out[1]["distance_km"]
     assert out[-1]["distance_km"] is None
+
+
+def _rate_limited_error(retry_after: str | None) -> aiohttp.ClientResponseError:
+    url = URL("https://app.birdweather.com/graphql")
+    headers = {"Retry-After": retry_after} if retry_after is not None else {}
+    return aiohttp.ClientResponseError(
+        aiohttp.RequestInfo(url, "POST", CIMultiDictProxy(CIMultiDict()), url),
+        (),
+        status=429,
+        message="Too Many Requests",
+        headers=headers,
+    )
+
+
+@pytest.mark.parametrize(
+    ("header", "expected"),
+    [
+        ("120", 120.0),
+        ("0", 0.0),
+        (None, None),
+        ("", None),
+        ("soon", None),
+        ("86400", 3600.0),  # capped at an hour
+        ("Wed, 21 Oct 2015 07:28:00 GMT", 0.0),  # a date in the past
+    ],
+)
+def test_retry_after_seconds(header, expected) -> None:
+    assert retry_after_seconds(_rate_limited_error(header)) == expected
+
+
+def test_retry_after_seconds_http_date() -> None:
+    when = datetime.now(UTC) + timedelta(seconds=900)
+    seconds = retry_after_seconds(_rate_limited_error(format_datetime(when, usegmt=True)))
+    assert 890 <= seconds <= 900
+
+
+async def test_query_carries_retry_after_on_http_error() -> None:
+    """An HTTP error surfaces as BirdWeatherError with the API's Retry-After."""
+
+    class _RateLimitedResp(_Resp):
+        def raise_for_status(self):
+            raise _rate_limited_error("1800")
+
+    class _RateLimitedSession:
+        def post(self, url, json=None, headers=None):
+            return _RateLimitedResp({})
+
+    client = BirdWeatherClient(_RateLimitedSession())
+    with pytest.raises(BirdWeatherError) as excinfo:
+        await client.get_raw_detections("1", first=10)
+    assert excinfo.value.retry_after == 1800
