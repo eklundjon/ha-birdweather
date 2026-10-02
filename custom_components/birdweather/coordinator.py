@@ -81,9 +81,9 @@ def async_get_entry_device(
 ) -> dr.DeviceEntry | None:
     """The entry's device with this identifier, or None.
 
-    device_registry.async_get_device is deprecated from 2026.10 (identifiers
+    device_registry.async_get_device is deprecated from 2026.9 (identifiers
     are unique per config entry now) and breaks in 2027.8. Its replacement
-    doesn't exist before 2026.10, so fall back on older versions.
+    doesn't exist before 2026.8, so fall back on older versions.
     """
     reg = dr.async_get(hass)
     if hasattr(reg, "async_get_device_by_identifier"):

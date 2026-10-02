@@ -172,7 +172,7 @@ async def test_setup_clears_legacy_serial_number(
 
     device = async_get_entry_device(hass, (DOMAIN, STATION_ID), entry.entry_id)
     assert device.serial_number is None
-    # Calling the deprecated device_registry.async_get_device logs a warning (2026.10+).
+    # Calling the deprecated device_registry.async_get_device logs a warning (2026.9+).
     assert "device_registry.async_get_device" not in caplog.text
 
 

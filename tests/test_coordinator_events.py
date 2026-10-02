@@ -84,7 +84,7 @@ async def test_new_species_event_fires(
     assert events[0].data["ebird_url"] == "https://ebird.org/species/brdowl"
     assert events[0].data["allaboutbirds_url"]
     assert events[0].data["classification"] == "bird"
-    # Calling the deprecated device_registry.async_get_device logs a warning (2026.10+).
+    # Calling the deprecated device_registry.async_get_device logs a warning (2026.9+).
     assert "device_registry.async_get_device" not in caplog.text
 
 
