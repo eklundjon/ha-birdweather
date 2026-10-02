@@ -186,12 +186,18 @@ class BirdWeatherConfigFlow(ConfigFlow, domain=DOMAIN):
         """Change bat support (the station itself stays fixed)."""
         entry = self._get_reconfigure_entry()
         if user_input is not None:
-            return self.async_update_reload_and_abort(
+            # Update only: the entry's update listener does the reload, and
+            # reloading here too is deprecated from 2026.6 and an error in
+            # 2026.12. This is async_update_and_abort, which ConfigFlow lacks on
+            # our 2025.4 minimum.
+            self.hass.config_entries.async_update_entry(
                 entry,
-                data_updates={
-                    CONF_BAT_SUPPORT: user_input.get(CONF_BAT_SUPPORT, DEFAULT_BAT_SUPPORT)
+                data={
+                    **entry.data,
+                    CONF_BAT_SUPPORT: user_input.get(CONF_BAT_SUPPORT, DEFAULT_BAT_SUPPORT),
                 },
             )
+            return self.async_abort(reason="reconfigure_successful")
         return self.async_show_form(
             step_id="reconfigure",
             data_schema=_bat_schema(entry.data.get(CONF_BAT_SUPPORT, DEFAULT_BAT_SUPPORT)),
