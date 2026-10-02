@@ -45,7 +45,16 @@ client), `test_coordinator_pure.py` (the pure `normalize` helpers),
 `test_coordinator_update.py` / `test_coordinator_events.py` (the poll loop and
 automation events), `test_statistics.py`, `test_config_flow.py`,
 `test_advanced_options.py`, `test_device_trigger.py`, `test_diagnostics.py`,
-`test_entry_setup.py` (end-to-end setup), and `test_store_migration.py`.
+`test_entry_setup.py` (end-to-end setup), `test_store_migration.py`, and
+`test_card_loader.py` (the startup card loader).
+
+The card loader and the cards' load-twice guards also have JavaScript tests in
+`tests/js/`. They use Node's built-in test runner (Node 22 or newer) and have no
+dependencies, so there's nothing to install:
+
+```bash
+node --test "tests/js/*.test.mjs"
+```
 
 ### How the tests stand up a coordinator
 
@@ -88,9 +97,10 @@ in play, so line breaks are a judgement call.
 ## What CI enforces
 
 `.github/workflows/test.yml` runs on every push to `main` and every pull
-request, in two jobs:
+request, in three jobs:
 
 - **ruff** — `ruff check .` on Python 3.13 with the pinned ruff.
+- **card JS** — the tests in `tests/js/` on Node 24.
 - **pytest** — a matrix that pins PHACC (and therefore Home Assistant) to two
   points: the declared minimum and the latest. Each PHACC release pins one exact
   HA version, so pinning PHACC pins HA:
@@ -105,7 +115,7 @@ request, in two jobs:
   [docs/architecture.md](architecture.md)). When you raise that floor, update the
   matrix to match.
 
-Both jobs must pass for a PR to merge (the required checks also include the
+The ruff and pytest jobs must pass for a PR to merge (the required checks also include the
 `hassfest` and `hacs` validation workflows). Docs-only changes still run the full
 suite.
 
@@ -153,6 +163,10 @@ The two Lovelace cards in `custom_components/birdweather/www/` are generated fro
 the canonical Haikubox cards by `scripts/sync-cards.sh` (brand substitution plus
 a small feature flip). Don't hand-edit them ad hoc — see the header comment in
 each card and [docs/cards.md](cards.md).
+
+`www/birdweather-card-loader.js` and `card_loader.py` are ported from Haikubox
+by hand (brand substitution only) rather than generated; keep them in step with
+the Haikubox originals.
 
 ## Pull request conventions
 
