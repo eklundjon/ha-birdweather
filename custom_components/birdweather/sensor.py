@@ -13,7 +13,6 @@ from homeassistant.components.sensor import (
     SensorStateClass,
 )
 from homeassistant.const import (
-    CONCENTRATION_PARTS_PER_MILLION,
     PERCENTAGE,
     SIGNAL_STRENGTH_DECIBELS_MILLIWATT,
     EntityCategory,
@@ -29,6 +28,17 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from .const import CONF_BAT_SUPPORT, CONF_STATION_ID, DEFAULT_BAT_SUPPORT, DOMAIN
 from .coordinator import BirdWeatherConfigEntry, BirdWeatherCoordinator
 from .entity import BirdWeatherEntity
+
+try:
+    # UnitOfRatio replaced CONCENTRATION_PARTS_PER_MILLION (absent in 2026.2,
+    # present by 2026.8), and the old constant is removed in 2027.8. Import the
+    # old one only where the new one doesn't exist, so newer versions never
+    # touch it.
+    from homeassistant.const import UnitOfRatio
+
+    _PPM = UnitOfRatio.PARTS_PER_MILLION
+except ImportError:
+    from homeassistant.const import CONCENTRATION_PARTS_PER_MILLION as _PPM
 
 PARALLEL_UPDATES = 0
 
@@ -119,7 +129,7 @@ HARDWARE_SENSORS: tuple[BirdWeatherSensorDescription, ...] = (
         translation_key="env_voc",
         suite="environment",
         device_class=SensorDeviceClass.VOLATILE_ORGANIC_COMPOUNDS_PARTS,
-        native_unit_of_measurement=CONCENTRATION_PARTS_PER_MILLION,
+        native_unit_of_measurement=_PPM,
         state_class=SensorStateClass.MEASUREMENT,
         suggested_display_precision=3,
         value_fn=lambda s: s.get("voc"),

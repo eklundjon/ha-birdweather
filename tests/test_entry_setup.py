@@ -7,6 +7,7 @@ native_value / attributes and the binary sensor in one pass.
 
 from __future__ import annotations
 
+import importlib
 from datetime import UTC, datetime, timedelta
 from unittest.mock import patch
 
@@ -18,6 +19,7 @@ from homeassistant.helpers import entity_registry as er
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 import custom_components.birdweather as integration
+from custom_components.birdweather import sensor as sensor_platform
 from custom_components.birdweather.const import (
     CONF_BAT_SUPPORT,
     CONF_STATION_ID,
@@ -190,6 +192,18 @@ async def test_entry_setup_creates_puc_hardware_entities(hass: HomeAssistant) ->
 
     temp = next(e for e in entities if e.unique_id == f"{STATION_ID}_temperature")
     assert hass.states.get(temp.entity_id).state == "21.5"
+
+    voc = next(e for e in entities if e.unique_id == f"{STATION_ID}_voc")
+    assert hass.states.get(voc.entity_id).attributes["unit_of_measurement"] == "ppm"
+
+
+def test_sensor_module_avoids_deprecated_ppm_constant(caplog: pytest.LogCaptureFixture) -> None:
+    """Importing the sensor platform doesn't touch CONCENTRATION_PARTS_PER_MILLION
+    where UnitOfRatio exists (Home Assistant logs a deprecation, and the constant
+    is removed in 2027.8)."""
+    importlib.reload(sensor_platform)
+    assert "CONCENTRATION_PARTS_PER_MILLION" not in caplog.text
+    assert sensor_platform._PPM == "ppm"
 
 
 async def test_unload_entry(hass: HomeAssistant) -> None:
