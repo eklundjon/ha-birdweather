@@ -322,6 +322,20 @@ class BirdWeatherBirdCard extends HTMLElement {
     return { entity: "", tap_action: { action: "more-info" }, position: 1 };
   }
 
+  // Home Assistant tells a card which layout it's in: "grid" in a Sections
+  // view, where the grid cell gives the card a fixed height. Anywhere else (a
+  // Masonry view, the "By entity" card-picker preview) the parent's height is
+  // auto, and this card's size-contained host would collapse to a sliver with
+  // no photo. There it sizes itself from its width instead (see :host([free])).
+  set layout(value) {
+    this._layout = value;
+    this.toggleAttribute("free", value !== "grid");
+  }
+
+  get layout() {
+    return this._layout;
+  }
+
   setConfig(config) {
     if (config.entity === undefined) throw new Error("'entity' is required");
     // `position` is 1-based: 1 = top-ranked bird, 2 = second, etc. Lets a
@@ -611,6 +625,10 @@ class BirdWeatherBirdCard extends HTMLElement {
           display: block;
           height: 100%;
           container-type: size;
+        }
+        :host([free]) {
+          height: auto;
+          aspect-ratio: 1;
         }
         ha-card {
           overflow: hidden;
