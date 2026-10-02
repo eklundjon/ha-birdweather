@@ -62,6 +62,11 @@ def make_client(
     return client
 
 
+# The throwaway config entry's id. A test that registers the device for event
+# firing registers it under a MockConfigEntry with this id.
+ENTRY_ID = "test_entry"
+
+
 def make_coordinator(
     hass=None, *, client: AsyncMock | None = None, options: dict | None = None, **attrs
 ):
@@ -71,7 +76,9 @@ def make_coordinator(
     c.station_id = "12345"
     c.device_name = "Test Station"
     # data records a bat-support choice, so _async_setup doesn't make one.
-    c.config_entry = SimpleNamespace(options=options or {}, data={"bat_support": False})
+    c.config_entry = SimpleNamespace(
+        options=options or {}, data={"bat_support": False}, entry_id=ENTRY_ID
+    )
     c._client = client or make_client()
 
     c._baseline_ranks = {}

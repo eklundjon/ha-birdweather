@@ -12,7 +12,11 @@ from homeassistant.loader import async_get_integration
 
 from .card_loader import async_install_card_loader, async_remove_card_loader
 from .const import CONF_STATION_ID, DOMAIN
-from .coordinator import BirdWeatherConfigEntry, BirdWeatherCoordinator
+from .coordinator import (
+    BirdWeatherConfigEntry,
+    BirdWeatherCoordinator,
+    async_get_entry_device,
+)
 
 CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
 
@@ -54,12 +58,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: BirdWeatherConfigEntry) 
     # device page. HA preserves device fields an integration stops supplying, so
     # dropping it from DeviceInfo doesn't clear an already-registered device —
     # do it explicitly here. Idempotent (no-op once cleared).
-    device_reg = dr.async_get(hass)
-    device = device_reg.async_get_device(
-        identifiers={(DOMAIN, entry.data[CONF_STATION_ID])}
+    device = async_get_entry_device(
+        hass, (DOMAIN, entry.data[CONF_STATION_ID]), entry.entry_id
     )
     if device is not None and device.serial_number is not None:
-        device_reg.async_update_device(device.id, serial_number=None)
+        dr.async_get(hass).async_update_device(device.id, serial_number=None)
 
     return True
 

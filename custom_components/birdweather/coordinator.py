@@ -75,6 +75,21 @@ from .statistics import async_import_history_statistics
 
 _LOGGER = logging.getLogger(__name__)
 
+
+def async_get_entry_device(
+    hass: HomeAssistant, identifier: tuple[str, str], entry_id: str
+) -> dr.DeviceEntry | None:
+    """The entry's device with this identifier, or None.
+
+    device_registry.async_get_device is deprecated from 2026.9 (identifiers
+    are unique per config entry now) and breaks in 2027.8. Its replacement
+    doesn't exist before 2026.8, so fall back on older versions.
+    """
+    reg = dr.async_get(hass)
+    if hasattr(reg, "async_get_device_by_identifier"):
+        return reg.async_get_device_by_identifier(identifier, entry_id)
+    return reg.async_get_device(identifiers={identifier})
+
 _STORE_VERSION = 1
 
 # Per-station .storage suffixes — the live set, removed when the entry is removed
@@ -903,8 +918,8 @@ class BirdWeatherCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         )
 
     def _fire_event(self, trigger_type: str, record: dict[str, Any], **extra: Any) -> None:
-        device = dr.async_get(self.hass).async_get_device(
-            identifiers={(DOMAIN, self.station_id)}
+        device = async_get_entry_device(
+            self.hass, (DOMAIN, self.station_id), self.config_entry.entry_id
         )
         if device is None:
             return
