@@ -42,12 +42,17 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+        with:
+          # Full history, so the notes step can find the version-bump commit
+          # under the merge commit.
+          fetch-depth: 0
 
       - name: Read version from manifest
         id: v
         run: |
           version=$(jq -er .version custom_components/birdweather/manifest.json)
           echo "tag=v$version" >> "$GITHUB_OUTPUT"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
           # Anything but a plain X.Y.Z (1.0.0-rc1, 1.0.0b2, ...) is drafted as a
           # pre-release, so HACS offers it only to users who opt into betas. The
           # flag survives publishing; a plain version can still be ticked by hand.
@@ -57,11 +62,46 @@ jobs:
             echo "prerelease=true" >> "$GITHUB_OUTPUT"
           fi
 
+      - name: Take the title and notes from the version-bump commit
+        id: notes
+        env:
+          VERSION: ${{ steps.v.outputs.version }}
+          MANIFEST: custom_components/birdweather/manifest.json
+        run: |
+          # The bump commit is the newest non-merge commit that touched the
+          # manifest. Its body (minus trailers like Co-Authored-By) goes above
+          # GitHub's generated "What's Changed" list. A subject of the form
+          # "Release <version>: <Name>" titles the draft "v<version> <Name>";
+          # anything else gets the bare tag. Commit with `git commit -F <file>`
+          # so `#` headings in the body survive.
+          bump=$(git log -1 --no-merges --format=%H -- "$MANIFEST")
+          subject=$(git log -1 --format=%s "$bump")
+          notes="$RUNNER_TEMP/release-notes.md"
+          git log -1 --format=%b "$bump" | python3 -c '
+          import re, sys
+          paras = re.split(r"\n\s*\n", sys.stdin.read().strip())
+          trailer = re.compile(r"^[A-Za-z][A-Za-z0-9-]*: .+$")
+          if paras and all(trailer.match(l) for l in paras[-1].splitlines()):
+              paras.pop()
+          body = "\n\n".join(paras).strip()
+          sys.stdout.write(body + "\n" if body else "")
+          ' > "$notes"
+          title="v$VERSION"
+          shopt -s nocasematch
+          re="^(chore: *)?release +v?${VERSION//./\\.}: *(.+)$"
+          if [[ "$subject" =~ $re ]]; then
+            title="v$VERSION ${BASH_REMATCH[2]}"
+          fi
+          echo "title=$title" >> "$GITHUB_OUTPUT"
+          echo "file=$notes" >> "$GITHUB_OUTPUT"
+
       - name: Open a draft release pinned to this commit
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ steps.v.outputs.tag }}
           PRERELEASE: ${{ steps.v.outputs.prerelease }}
+          TITLE: ${{ steps.notes.outputs.title }}
+          NOTES: ${{ steps.notes.outputs.file }}
         run: |
           # Idempotent: this also fires on manifest edits that don't touch the
           # version (and on manual dispatch), and GitHub will happily create
@@ -80,9 +120,11 @@ jobs:
           fi
           flags=()
           if [ "$PRERELEASE" = true ]; then flags+=(--prerelease); fi
+          # With --generate-notes, gh puts our notes first and GitHub's list after.
+          if [ -s "$NOTES" ]; then flags+=(--notes-file "$NOTES"); fi
           gh release create "$TAG" \
             --draft "${flags[@]}" \
             --target "$GITHUB_SHA" \
-            --title "$TAG" \
+            --title "$TITLE" \
             --generate-notes
           echo "Drafted $TAG at $GITHUB_SHA — edit the notes and publish when ready."
