@@ -4,32 +4,32 @@
 [![HA Version](https://img.shields.io/badge/Home%20Assistant-2025.4+-blue.svg?logo=homeassistant)](https://www.home-assistant.io)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-A Home Assistant custom integration for [BirdWeather](https://www.birdweather.com/) stations (PUC, BirdNET-Pi, and other registered stations). Surfaces recent detections, daily and rolling species counts, activity and diversity trends, and highlights unusual visitors — all with bird photos and custom Lovelace cards.
+This is a Home Assistant integration for [BirdWeather](https://www.birdweather.com/) stations: PUCs, BirdNET-Pis, and any other registered station. It shows what the station has been hearing, keeps daily and rolling species counts, tracks activity and diversity, points out unusual visitors, and comes with two dashboard cards that show bird photos.
 
-It reads the **public** BirdWeather GraphQL API anonymously — no account or API token is needed for any station whose owner has made it public.
+It reads BirdWeather's public GraphQL API without logging in, so you don't need an account or an API token. The station does have to be public.
 
 ## Features
 
-- **Recent detections** — species heard in the last hour, updated every few minutes
-- **Last detection** — persists the most recently heard bird, never goes unknown between detections
-- **Rolling 24-hour counts** — true total detections and top species over the trailing 24 hours
-- **Species diversity (24 h)** — Shannon index over the last day, with richness and evenness attributes
-- **Activity vs. typical** — how busy the station is right now relative to its own 30-day average (1.0 ≈ a normal day)
-- **Notable species** — most unusual recent visitor, by a tunable blend of rarity (vs. the station's trailing baseline) and recency
-- **New species** — flags species new to the station, plus a rolling "new species in the last 30 days" momentum count
-- **Bird-detail sensors** — top species (baseline), rarest species (7 d), lifetime species count
-- **Detection history start** — diagnostic timestamp of the station's earliest recorded detection
-- **Extended silence** — diagnostic problem sensor that flags when a station goes a full day without reporting
-- **Custom Lovelace cards** — a bird photo card and a ranked list card, with optional per-row links to **eBird**, **All About Birds**, **Macaulay Library**, and **BirdWeather**
-- **Species details** — expand a species in the list card for a Wikipedia description (fetched on demand; tap it to open the full article), its alpha banding code, and the reference links above
-- **Play the call** _(beta)_ — a play button on the bird card and in the list card's detail plays the detection's recording (soundscape) right in the browser. **Off by default** — turn it on in the integration options. Note: if your BirdWeather station has audio sharing disabled, its soundscapes are silent, so the button plays nothing — the integration streams BirdWeather's clip directly and can't detect a silent one
-- **Daily activity rhythm** — a **Peak activity hour** sensor (the station's "dawn chorus" peak) with a 24-hour `hourly_activity` curve for chart cards, plus a per-species **hourly sparkline** (▁▂▅█) in the list card's detail view showing when each bird is most active
-- **Historical trends (no Grafana)** — backfills Home Assistant's native **long-term Statistics** with the station's *true* daily history — detections per day and species per day, all the way back to its first recorded day — so HA's built-in Statistics graph card shows real multi-month trends out of the box
-- **Automations** — device triggers for new-species, unusual-visitor, and watched-species detections, plus blueprints for photo push notifications and playing the call on a media player
-- **Watched species** — pick (or type) species to be alerted about; a device trigger fires when one is heard, plus a **Watched species** sensor listing the ones your station has recorded (drop it into the list card for a "Birds of interest" view)
-- **Confidence controls** — optional thresholds to hide low-confidence "maybe" detections from the feed and to gate alerts on confident hits only (independent, so you can see maybes but only be pinged on sure things); the cards show a low/medium/high confidence band
-- **Bats** — on a bat-edition PUC, turn on bat support for bat sensors (last bat, bats in the last 24 hours), a bat list card showing each bat's reported behavior, and a "bat activity" trigger. Bird counts never include bats ([details](docs/bats.md))
-- **PUC hardware sensors** — for BirdWeather **PUC** stations, onboard environment readings (temperature, humidity, barometric pressure, sound level, air quality, light) and device-health diagnostics (battery voltage, power source, Wi-Fi signal, SD-card free) — created automatically, and only for the hardware your station actually reports (a BirdNET-Pi gets none)
+- **Recent detections.** Species heard in the last hour, updated every few minutes.
+- **Last detection.** The most recent bird the station heard. It never goes back to unknown between detections.
+- **24-hour counts.** True total detections and top species over the last 24 hours.
+- **Species diversity.** A diversity score for the last 24 hours (the Shannon index), with species richness and evenness as attributes.
+- **Activity vs. typical.** How busy the station is right now compared with its own 30-day average. 1.0 is a normal day.
+- **Notable species.** The most unusual recent visitor, scored on how rare it is against the station's own history and how recently it was heard. You can adjust the balance between the two.
+- **New species.** Species heard for the first time at the station, plus a count of how many were new in the last 30 days.
+- **Top, rarest and lifetime species.** The station's most common species, its rarest species of the last 7 days, and the number of species it has ever recorded.
+- **Detection history start.** A diagnostic timestamp of the station's earliest recorded detection.
+- **Extended silence.** A diagnostic problem sensor that turns on when the station goes a full day without reporting.
+- **Dashboard cards.** A single-bird photo card and a ranked list card, with optional links on each row to eBird, All About Birds, the Macaulay Library and BirdWeather.
+- **Species details.** Expand a species in the list card for a Wikipedia description (fetched when you open it; tap it for the full article), its alpha banding code, and the same reference links.
+- **Play the call** (beta). A play button on the bird card and in the list card's details plays the detection's recording (its soundscape) in your browser. It's off by default; turn it on in the integration's options. If the station has audio sharing turned off, its soundscapes are silent, so the button plays nothing. The integration streams BirdWeather's clip directly and can't tell that a clip is silent.
+- **Daily activity rhythm.** A **Peak activity hour** sensor (the station's dawn-chorus peak) with a 24-hour `hourly_activity` curve for chart cards, plus a small hourly chart (▁▂▅█) for each species in the list card's details, showing when that bird is most active.
+- **Long-term history.** The integration loads the station's real daily history into Home Assistant's Statistics, detections per day and species per day all the way back to its first day, so the built-in Statistics graph card can chart months of trends. No Grafana required.
+- **Automations.** Device triggers for new species, unusual visitors and species you're watching for, plus blueprints for photo notifications and for playing a call on a speaker.
+- **Watched species.** Pick (or type) species you want to hear about. A device trigger fires when one is heard, and a **Watched species** sensor lists the ones your station has recorded, which you can put in the list card for a "birds of interest" view.
+- **Confidence controls.** Two optional thresholds: one hides low-confidence "maybe" detections from the feed, and one only fires alerts for confident detections. They're independent, so you can still see the maybes but only get notified about sure things. The cards show a low, medium or high confidence label.
+- **Bats.** On a bat-edition PUC, turn on bat support for bat sensors (the last bat, and bats in the last 24 hours), a bat list card that shows each bat's reported behavior, and a "bat activity" trigger. Bird counts never include bats ([details](docs/bats.md)).
+- **PUC hardware sensors.** On a BirdWeather PUC, onboard environment readings (temperature, humidity, air pressure, sound level, air quality and light) and device-health diagnostics (battery voltage, power source, Wi-Fi signal and free SD card space). They're created automatically, and only for the hardware your station reports, so a BirdNET-Pi gets none.
 
 ## Quick start
 
@@ -39,48 +39,48 @@ It reads the **public** BirdWeather GraphQL API anonymously — no account or AP
 
 [![Open your Home Assistant instance and open a repository inside the Home Assistant Community Store.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=eklundjon&repository=ha-birdweather&category=integration)
 
-Click the badge to open HACS in your Home Assistant with this repository pre-filled, then **Download** and restart. Or add it manually:
+Click the badge to open this repository in HACS, click **Download**, and restart Home Assistant. Or add it by hand:
 
-1. In **HACS**, open the **⋮** menu (top right) → **Custom repositories**
-2. Add `https://github.com/eklundjon/ha-birdweather`, type **Integration**, then **Add**
-3. Search HACS for **BirdWeather**, open it, and click **Download**
-4. Restart Home Assistant
+1. In **HACS**, open the **⋮** menu (top right) and choose **Custom repositories**.
+2. Add `https://github.com/eklundjon/ha-birdweather` with type **Integration**, then click **Add**.
+3. Search HACS for **BirdWeather**, open it, and click **Download**.
+4. Restart Home Assistant.
 
 **Manual**
 
-1. Copy the `custom_components/birdweather` folder into your HA `config/custom_components/` directory
-2. Restart Home Assistant
+1. Copy the `custom_components/birdweather` folder into your Home Assistant `config/custom_components/` folder.
+2. Restart Home Assistant.
 
-### Configure
+### Add the integration
 
 1. Go to **Settings → Devices & Services → Add Integration**.
 2. Search for **BirdWeather**.
-3. Pick a nearby public station from the list, type a name to search, or paste a numeric **station ID** directly.
-4. Choose whether to turn on **Bat support**. It's ticked already for a bat-edition PUC (see [docs/bats.md](docs/bats.md)); you can change it later with **Reconfigure**.
+3. Pick a nearby public station from the list, type a name to search for one, or paste a station ID.
+4. Choose whether to turn on **Bat support**. It's already ticked for a bat-edition PUC (see [docs/bats.md](docs/bats.md)). You can change it later with **Reconfigure**.
 
-> **Finding your station ID.** On [app.birdweather.com](https://app.birdweather.com), open your station — the ID is the number in the URL (`.../stations/<id>`). The station must be **public** for the integration to read it.
+To find your station ID, open your station on [app.birdweather.com](https://app.birdweather.com). The ID is the number at the end of the URL (`.../stations/<id>`). The station has to be public for the integration to read it.
 
-A device is created and named after the station, with the sensors above plus an "extended silence" binary sensor.
+The integration creates a device named after the station, with the sensors above and an "extended silence" binary sensor.
 
 ### Add a card
 
-Both custom cards register automatically — no Lovelace resource setup required. (The integration adds a small `/local/birdweather-card-loader.js` resource itself so the cards also load on pages opened while Home Assistant is still starting; YAML-mode dashboards need to list it by hand — see [troubleshooting](docs/troubleshooting.md#cards-show-custom-element-doesnt-exist-after-a-restart).) The simplest "show me a bird" card:
+The cards install themselves, so there's nothing to add under dashboard resources. (The integration adds a small `/local/birdweather-card-loader.js` resource itself, so the cards also load on pages opened while Home Assistant is still starting. If your dashboards are in YAML mode, you need to add that resource yourself. See [troubleshooting](docs/troubleshooting.md#cards-show-custom-element-doesnt-exist-after-a-restart).) The simplest card is:
 
 ```yaml
 type: custom:birdweather-bird-card
 entity: sensor.<station>_last_detection
 ```
 
-A ranked list (e.g. top species over the last 24 hours):
+A ranked list, here the top species of the last 24 hours:
 
 ```yaml
 type: custom:birdweather-bird-list-card
 entity: sensor.<station>_daily_top_species
 ```
 
-### Historical trends
+### Long-term history
 
-The integration backfills HA's long-term Statistics with the station's true daily history. View it with the built-in **Statistics graph** card (no Grafana needed) — the statistic IDs are `birdweather:station_<id>_daily_detections` (detections/day, totals per day/week/month) and `birdweather:station_<id>_daily_species` (species/day):
+To chart the station's history, add a **Statistics graph** card. The statistic IDs are `birdweather:station_<id>_daily_detections` (detections per day, which can also be totaled by week or month) and `birdweather:station_<id>_daily_species` (species per day).
 
 ```yaml
 type: statistics-graph
@@ -92,11 +92,11 @@ entities:
   - birdweather:station_<id>_daily_detections
 ```
 
-### Automations & blueprints
+### Automations and blueprints
 
-The integration exposes three **device triggers** — new-species, unusual-visitor, and watched-species — in the automation editor (**When → Device**). Each is a filtered view of the `birdweather_event` bus event, whose payload carries the species, scientific name, photo (`image_url`), reference links (`ebird_url`, `wikipedia_url`), the call recording (`audio_url`), and per-trigger extras (`days_absent`, `lifetime_species_count`).
+The automation editor offers three device triggers (**When → Device**): new species, unusual visitor and watched species. Each one is a filter on the `birdweather_event` event, which carries the species, its scientific name, a photo (`image_url`), reference links (`ebird_url`, `wikipedia_url`), the recording (`audio_url`), and extras for some triggers (`days_absent`, `lifetime_species_count`).
 
-Four ready-made **blueprints** are included as worked examples. Blueprints aren't installed with the integration — Home Assistant imports them from a URL — so click a badge for one-click import ([full instructions](docs/automations.md#importing-a-blueprint)):
+There are four ready-made blueprints to start from. Home Assistant doesn't install blueprints with an integration, it imports them from a URL, so click a badge to import one ([full instructions](docs/automations.md#importing-a-blueprint)):
 
 | Blueprint | Import |
 | --- | --- |
@@ -105,92 +105,62 @@ Four ready-made **blueprints** are included as worked examples. Blueprints aren'
 | Watched species notification | [![Open your Home Assistant instance and show the blueprint import dialog with a specific blueprint pre-filled.](https://my.home-assistant.io/badges/blueprint_import.svg)](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https%3A%2F%2Fgithub.com%2Feklundjon%2Fha-birdweather%2Fblob%2Fmain%2Fblueprints%2Fautomation%2Fbirdweather%2Fwatched_species_notification.yaml) |
 | Play the call on a media player | [![Open your Home Assistant instance and show the blueprint import dialog with a specific blueprint pre-filled.](https://my.home-assistant.io/badges/blueprint_import.svg)](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https%3A%2F%2Fgithub.com%2Feklundjon%2Fha-birdweather%2Fblob%2Fmain%2Fblueprints%2Fautomation%2Fbirdweather%2Fplay_call_on_media_player.yaml) |
 
-The three notification blueprints send a mobile push (with the bird's photo) and differ only in trigger; the new-species one adds eBird/Wikipedia tap-through buttons and the lifetime count, and the unusual-visitor one attaches the call recording when audio is enabled. The fourth plays a detection's call on a media player. Since every `birdweather_event` carries the same fields, treat them as recipes and mix in whatever you want.
+The three notification blueprints send a push notification to your phone with the bird's photo, and differ only in their trigger. The new-species one adds eBird and Wikipedia buttons and the lifetime species count, and the unusual-visitor one attaches the recording when audio is turned on. The fourth plays a detection's call on a speaker. Every `birdweather_event` carries the same fields, so treat these as examples and change them however you like.
 
-> **Audio note.** `audio_url` is BirdWeather's soundscape clip (FLAC) and is only present when audio is enabled in the options *and* the station has a recording for the detection (a station with audio sharing off produces silent clips). FLAC may not play in iOS notification attachments or on every media player.
+*Note:* `audio_url` is BirdWeather's soundscape clip (FLAC). It's only there when audio is turned on in the options and the station has a recording for that detection, and a station with audio sharing off produces silent clips. FLAC may not play in iOS notification attachments or on every media player.
 
 ## Options
 
-After setup, open the integration's **Configure** dialog to tune:
+After setup, open the integration's **Configure** dialog:
 
-- **Notability rarity weight** — how much the "notable species" pick leans on rarity vs. recency (100% = pure rarity; default 70%).
-- **Unusual-visitor days** — how long a known species must go unheard before its reappearance counts as an unusual visitor (default 30 days).
-- **Hide detections below confidence** — suppress low-confidence "maybe" detections from the recent / last / notable / new sensors and the cards (0% = show everything, the default). The 24-hour **total** and **diversity** counts come straight from BirdWeather's own aggregates and are *not* affected by this filter — they always reflect the station's own confidence floor.
-- **Only alert above confidence** — don't fire the new-species, unusual-visitor, or watched-species triggers below this confidence (0% = alert on any, the default). Independent of the hide filter, so you can keep seeing maybes while only being pinged on confident hits.
-- **Watched species** — choose species (from a pick-list of ones your station has detected, and/or a free-text list for ones it hasn't) to be alerted about. When a watched species is heard, the **"Watched species detected"** device trigger fires — wire it to a notification in the automation editor.
-- **Advanced** (collapsed by default) — window lengths and poll cadence; defaults suit most stations:
-  - **Recent window** (1–24 h, default 1) — how far back "Recent detections" looks and how long a species stays "recent" before it can re-fire a trigger.
-  - **Poll interval** (5–60 min, default 10) — how often the station is polled. Changing it reloads the integration so the new cadence takes effect immediately.
-  - **Rarity baseline window** (1–24 months, default 1) — trailing months of BirdWeather topSpecies counts used to rank rarity.
-  - **New-species momentum window** (7–365 days, default 30) — the window behind the "New species" count sensor.
+- **Notability rarity weight.** How much "notable species" leans on rarity rather than recency. 100% is rarity alone. The default is 70%.
+- **Unusual-visitor days.** How long a species the station knows has to go unheard before it counts as an unusual visitor when it comes back. The default is 30 days.
+- **Hide detections below confidence.** Leaves low-confidence "maybe" detections out of the recent, last, notable and new sensors and the cards. 0% (the default) shows everything. The 24-hour **total** and **diversity** come straight from BirdWeather's own counts, so this filter doesn't change them. They always use the station's own confidence threshold.
+- **Only alert above confidence.** The new-species, unusual-visitor and watched-species triggers don't fire below this confidence. 0% (the default) alerts on everything. It's independent of the hide filter, so you can keep seeing maybes and only get notified about confident detections.
+- **Watched species.** Species you want to hear about, chosen from a list of ones your station has heard, typed into a free-text list for ones it hasn't, or both. When one is heard, the **"Watched species detected"** device trigger fires. Connect it to a notification in the automation editor.
+- **Advanced** (collapsed by default). Window lengths and how often to poll. The defaults suit most stations.
+  - **Recent window** (1–24 hours, default 1). How far back "Recent detections" looks, and how long a species stays recent before it can set off a trigger again.
+  - **Poll interval** (5–60 minutes, default 10). How often the station is checked. Changing it reloads the integration, so the new interval takes effect right away.
+  - **Rarity baseline window** (1–24 months, default 1). How many months of BirdWeather's top-species counts rarity is measured against.
+  - **New-species momentum window** (7–365 days, default 30). The window for the "New species" count sensor.
 
 ## Documentation
 
 | Topic | Doc |
 |---|---|
-| Full sensor reference, the `detections` attribute contract, rarity scoring, persistent state stores | [docs/sensors.md](docs/sensors.md) |
-| Both custom cards, YAML examples, tap actions, full dashboard example | [docs/cards.md](docs/cards.md) |
-| Device triggers, the `birdweather_event` payload, push-notification blueprints | [docs/automations.md](docs/automations.md) |
+| Every sensor, the `detections` attribute, how rarity is scored, what's saved between restarts | [docs/sensors.md](docs/sensors.md) |
+| The two cards, YAML examples, tap actions, a sample dashboard | [docs/cards.md](docs/cards.md) |
+| Device triggers, the `birdweather_event` event, notification blueprints | [docs/automations.md](docs/automations.md) |
 | Bat support: what it adds, and how bats are kept out of bird counts | [docs/bats.md](docs/bats.md) |
-| Tuning windows & poll cadence (Advanced options), confidence filters, changing the station | [docs/advanced.md](docs/advanced.md) |
-| Config-flow errors, first-install behaviour, offline sensors, card-cache issues, diagnostics | [docs/troubleshooting.md](docs/troubleshooting.md) |
-| BirdWeather GraphQL queries, polling cadence, failure modes | [docs/api.md](docs/api.md) |
-| Module map, data flow, persistence, lifecycle, custom-card registration | [docs/architecture.md](docs/architecture.md) |
-| Local dev setup, running the test suite, the CI matrix, the refactor smoke harness | [docs/contributing.md](docs/contributing.md) |
+| Advanced options (windows and polling), the confidence filters, changing the station | [docs/advanced.md](docs/advanced.md) |
+| Setup errors, the first poll after install, sensors that go offline, cards not updating, diagnostics | [docs/troubleshooting.md](docs/troubleshooting.md) |
+| Which BirdWeather queries the integration makes, how often, and what happens when they fail | [docs/api.md](docs/api.md) |
+| How the code is organized | [docs/architecture.md](docs/architecture.md) |
+| Development setup, tests, CI, the refactor smoke test | [docs/contributing.md](docs/contributing.md) |
 
 ## Troubleshooting
 
-**A new station has no detections yet.**
-The integration still loads its sensors, including any PUC hardware readings.
-Recent detections show zero and last detection stays *unknown* until BirdWeather
-returns a public detection. An empty species history is valid, including after
-a Home Assistant restart.
+**A new station has no detections yet.** The integration still sets up its sensors, including any PUC hardware readings. Recent detections shows zero and last detection stays *unknown* until BirdWeather has a public detection. An empty history is fine, including after a Home Assistant restart.
 
-**A bird photo looks oddly cropped (a beak, tail, or head cut off).**
-The photos come from BirdWeather, which serves one square crop of a contributor
-photo per species — and a few are cropped tightly at the source. The cards
-always show the *whole* image and never crop it further (the soft blurred edges
-you may see are just fill), so a clipped subject means BirdWeather's own image is
-cropped that way. It can't be corrected from Home Assistant; if a photo looks
-wrong, it's worth reporting to BirdWeather.
+**A bird photo looks oddly cropped, with a beak, tail or head cut off.** The photos come from BirdWeather, which serves one square crop of a contributor's photo for each species, and a few are cropped tightly at the source. The cards always show the whole image and never crop it further (the soft blurred edges are just fill), so a clipped bird means BirdWeather's own image is cropped that way. It can't be fixed from Home Assistant. If a photo looks wrong, it's worth reporting to BirdWeather.
 
-**A card shows a 🐦 placeholder instead of a photo.**
-BirdWeather has no image for that species yet, or it failed to load; it appears
-once a photo is available and the next poll caches it.
+**A card shows a 🐦 placeholder instead of a photo.** BirdWeather has no image for that species yet, or it didn't load. It shows up once a photo is available and the next poll saves it.
 
-**"Notable species" went to *unknown* but "Last detection" still shows a bird.**
-That's intentional. *Last detection* is "the last bird heard, no matter how long
-ago" — it's backed by a persisted buffer, so it survives restarts and outages.
-*Notable species* means "most notable in the last 24 hours," so it drains to
-*unknown* when the station has reported nothing for 24 h — a useful signal that
-the station has gone quiet or offline.
+**"Notable species" went to *unknown* but "Last detection" still shows a bird.** That's on purpose. *Last detection* is the last bird heard, however long ago, and it's saved, so it survives restarts and outages. *Notable species* is the most notable bird of the last 24 hours, so it goes to *unknown* when the station has reported nothing for 24 hours. That's a useful sign the station has gone quiet or offline.
 
-**A card looks stale right after updating the integration.**
-Hard-refresh the dashboard — the card JavaScript is cached by your browser and
-only re-fetched when the integration version changes.
+**A card looks out of date right after updating the integration.** Hard-refresh the dashboard. Your browser caches the card code and only fetches it again when the integration's version changes.
 
-**Filing a bug report.**
-Open the BirdWeather device page and use **⋮ → Download diagnostics** to attach a
-redacted snapshot of the integration's state (the station id and name are
-redacted, so it's safe to share). It includes the latest poll's data and a short
-coordinator summary.
+**Filing a bug report.** Open the BirdWeather device page and choose **⋮ → Download diagnostics**. The download is a snapshot of the integration's state, including the latest poll's data and a short coordinator summary. The station ID and name are removed, so it's safe to attach.
 
 ## Attribution & data licensing
 
-This integration surfaces data from the **BirdWeather** public API — detections,
-species counts, and the bird photos served from its media CDN. BirdWeather data is
-powered by [BirdNET](https://birdnet.cornell.edu/); if you use it for research,
-please cite BirdNET:
+**BirdWeather data and photos.** Detections, species counts and bird photos (served from BirdWeather's media CDN) come from the BirdWeather public API, which is powered by [BirdNET](https://birdnet.cornell.edu/). If you use the data for research, please cite BirdNET:
 
 > Kahl, S., Wood, C. M., Eibl, M., & Klinck, H. (2021). BirdNET: A deep learning
 > solution for avian diversity monitoring. *Ecological Informatics*, 61, 101236.
 
-Bird photographs are served by BirdWeather and may be individually licensed by
-their contributors; review BirdWeather's terms before any redistribution or
-commercial use.
+The bird photos are served by BirdWeather and may be licensed individually by the people who took them. Check BirdWeather's terms before redistributing them or using them commercially.
 
 ## License
 
-MIT License — see [LICENSE](LICENSE) for details. This applies to the
-integration's **code**. The bird data and photos it surfaces (BirdWeather /
-BirdNET and contributors) are covered by their own terms, not by the MIT license.
+The code is released under the MIT License (see [LICENSE](LICENSE)). The bird data and photos it displays (from BirdWeather, BirdNET and photo contributors) are covered by their own terms, not by the MIT license.

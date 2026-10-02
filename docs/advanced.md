@@ -1,28 +1,26 @@
 # Advanced configuration
 
-## Tuning windows and cadence
+## Windows and polling
 
-The integration's window lengths and poll cadence have sensible defaults that suit most stations, but all four are exposed under **Settings → Devices & Services → BirdWeather → Configure → Advanced** (a collapsed section — defaults are fine, change only if you know you want to). Changing an option reloads the entry, so new values take effect immediately.
+The defaults work for most stations, but you can change them under **Settings → Devices & Services → BirdWeather → Configure → Advanced**. It's a collapsed section. Saving reloads the integration, so new values take effect right away.
 
-| Option | Default | Range | What it changes |
+| Option | Default | Range | What it does |
 | --- | --- | --- | --- |
-| **Recent window** | 1 hour | 1–24 h | How far back `recent_detections` looks, and how long a species stays "recent" before it can re-fire a new/unusual/watched device trigger. Longer = a fuller recent list but fewer repeat alerts. |
-| **Poll interval** | 10 min | 5–60 min | How often the station is polled. Shorter is fresher but more API load. |
-| **Rarity baseline window** | 1 month | 1–24 months | Trailing months of BirdWeather `topSpecies` counts used to rank rarity (the `notable`/`rarest` sensors and the `rarity_score` on events). Shorter favors recent frequency; longer trends toward all-time. |
-| **New-species momentum window** | 30 days | 7–365 d | Trailing days for the `new_species_window` sensor — how many species were first heard here within the window. Display-only; affects just that sensor. |
+| **Recent window** | 1 hour | 1–24 h | How far back `recent_detections` looks. It's also how long a species has to be gone before it can set off a new, unusual or watched trigger again. A longer window gives you a longer list and fewer repeat alerts. |
+| **Poll interval** | 10 min | 5–60 min | How often the integration checks the station. Shorter is fresher but makes more requests. |
+| **Rarity baseline window** | 1 month | 1–24 months | How many months of BirdWeather's top-species counts rarity is measured against. This drives the notable and rarest sensors and the `rarity_score` on events. Shorter favors what's been common recently; longer makes it closer to all-time. |
+| **New-species momentum window** | 30 days | 7–365 days | The window for `new_species_window`, which counts the species heard here for the first time in that period. It only affects that one sensor. |
 
-> The rarity window is in **months** (not days like the sibling Haikubox integration) because BirdWeather serves it natively as a trailing-period `topSpecies` aggregate, rather than something the integration assembles from per-day history.
+The rarity window is in months, not days as in the Haikubox integration, because BirdWeather provides it directly as a top-species count over a recent period. The integration doesn't have to build it from daily history.
 
-Under the hood the integration makes a single detection-feed request per poll — the 1-hour recent window is derived client-side from that same trailing-24 h response. The activity/diversity/history figures come from BirdWeather's native per-period aggregates in one extra GraphQL round-trip.
+Each poll makes one request for the detection feed. The 1-hour recent window is carved out of that same 24-hour response. The activity, diversity and history numbers come from BirdWeather's own totals for each period, in one more request.
 
-## Polling
+## Polling on your own schedule
 
-### Changing the polling cadence
+The **Poll interval** option covers 5 to 60 minutes. If you want something else, like polling on a schedule, turn off automatic polling and refresh from an automation instead:
 
-The simplest way to change how often the station is polled is the **Poll interval** option above (5–60 minutes). For finer control — a schedule-based cadence, or polling outside that range — turn off automatic polling and drive the refresh yourself:
-
-1. Go to **Settings → Devices & Services**, open the **BirdWeather** entry, use the **⋮** menu → **System options**, and turn **off** *"Enable polling for updates"*. Automatic polling stops.
-2. Add an automation that refreshes the data on your chosen schedule. All BirdWeather sensors share one data coordinator, so updating **any one** of them refreshes them all:
+1. Go to **Settings → Devices & Services**, open **BirdWeather**, and choose **⋮ → System options**. Turn off **Enable polling for updates**.
+2. Create an automation that updates any one BirdWeather sensor on your schedule. All the sensors share the same data, so updating one refreshes them all.
 
 ```yaml
 automation:
@@ -36,15 +34,15 @@ automation:
           entity_id: sensor.backyard_last_detection
 ```
 
-This is Home Assistant's built-in, integration-agnostic mechanism for a custom polling interval — see the [HA docs on polling](https://www.home-assistant.io/common-tasks/general/#defining-a-custom-polling-interval).
+This is standard Home Assistant. See [defining a custom polling interval](https://www.home-assistant.io/common-tasks/general/#defining-a-custom-polling-interval) in the HA docs.
 
 ## Confidence filters
 
-Two independent options (top-level, not in the Advanced section) gate on BirdWeather's per-detection confidence:
+Two options use BirdWeather's confidence for each detection. They're at the top of the **Configure** dialog, not under **Advanced**, and they're independent of each other:
 
-- **Hide detections below confidence** — suppresses low-confidence "maybe" detections from the recent / last / notable / new sensors and the cards. The 24-hour total and diversity counts come straight from BirdWeather's own aggregates and are *not* affected.
-- **Only alert above confidence** — gates the new-species / unusual-visitor / watched-species device triggers, independent of the hide filter — so you can keep seeing maybes while only being pinged on confident hits.
+- **Hide detections below confidence** leaves low-confidence "maybe" detections out of the recent, last, notable and new sensors and the cards. The 24-hour total and diversity come straight from BirdWeather's own counts, so this doesn't change them.
+- **Only alert above confidence** stops the new-species, unusual-visitor and watched-species triggers from firing below that confidence. You can keep seeing the maybes and only get notified about confident detections.
 
 ## Changing the station
 
-A station's ID is its identity (the integration's unique ID), so there's no in-place reconfigure. To point Home Assistant at a different station, remove the BirdWeather entry and add it again with the new station. (Removing an entry also cleans up that station's stored history; see [architecture.md](architecture.md).)
+The station ID is the integration entry's identity, so you can't switch an entry to a different station. **Reconfigure** only changes bat support (see [bats.md](bats.md)). To use a different station, remove the BirdWeather entry and add it again with the new station. Removing an entry also deletes that station's saved history (see [architecture.md](architecture.md)).

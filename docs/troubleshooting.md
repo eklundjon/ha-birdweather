@@ -1,50 +1,50 @@
 # Troubleshooting
 
-## Config flow can't find the station
+## Setup can't find the station
 
-During setup the integration looks the station up in BirdWeather's GraphQL API, and the error tells you which kind of failure it was:
+During setup the integration looks the station up in BirdWeather's API. The error tells you which way it failed:
 
-- **"No public station was found with that ID."** — the API answered but didn't recognise the station (wrong ID, or a station that isn't public).
-- **"Could not reach the BirdWeather API. Please try again."** — the request got no answer at all (a network/transport failure). That points at connectivity on the HA host, not the station ID.
+- ***No public station was found with that ID.*** BirdWeather answered but didn't recognize the station. Either the ID is wrong, or the station isn't public.
+- ***Could not reach the BirdWeather API. Please try again.*** The request got no answer at all. That's a network problem on the Home Assistant machine, not a problem with the station ID.
 
-Two things to check for the "no public station" case:
+For the first error, check two things:
 
-1. **Wrong station ID.** On [app.birdweather.com](https://app.birdweather.com), open your station — the ID is the number in the URL (`.../stations/<id>`). You can also pick a nearby station from the list in the setup dialog, or type a name to search, instead of pasting an ID.
-2. **Station isn't public.** The integration reads the public API, so the station must be public for the lookup to succeed.
+1. **The station ID.** Open your station on [app.birdweather.com](https://app.birdweather.com). The ID is the number at the end of the URL (`.../stations/<id>`). You can also pick a nearby station from the list in the setup dialog, or type a name to search for it, instead of pasting an ID.
+2. **Whether the station is public.** The integration reads BirdWeather's public API, so the station has to be public.
 
 ## Sensors show `0` or `unknown` right after install
 
-Each poll fetches a trailing-24 h detection window plus BirdWeather's native per-period aggregates, so most sensors populate on poll 1 if the station has recent activity. What to expect:
+Each poll fetches the last 24 hours of detections plus BirdWeather's own totals for each period, so most sensors fill in on the first poll if the station has been active. What to expect:
 
-- `recent_detections` — populates on the first poll that returns detections in the last hour; empty between active hours.
-- `last_detection`, `notable_species`, `new_species` — populate on the first poll that returns detections in the last 24 hours. `last_detection` then persists (rolling event cache; survives restarts/outages) and `new_species` persists (lifetime log); `notable_species` is an observation window and goes `unknown` after 24 h with nothing detected.
-- `daily_count`, `daily_top_species`, `species_diversity`, `activity_level`, `new_species_window`, `lifetime_species` — come from BirdWeather's native counts; populate on the first successful poll (`activity_level` is `unknown` until the trailing-30-day baseline has data).
-- `notable_species`, `rarest_species`, `yearly_top_species` — score against the rarity baseline (`topSpecies` over the trailing window), fetched once per day; available from the first poll.
-- `peak_activity_hour` — from the trailing-7-day time-of-day histogram, fetched once per day.
-- PUC hardware sensors — created on the first poll, and only for the suites your station reports (a non-PUC station gets none); they appear after a restart if the station gains a PUC later.
+- `recent_detections` fills in on the first poll that finds detections in the last hour. It's empty between active hours.
+- `last_detection`, `notable_species` and `new_species` fill in on the first poll that finds detections in the last 24 hours. After that, `last_detection` keeps its value (from its saved list of recent detections, through restarts and outages) and so does `new_species` (from the saved record of first-heard species). `notable_species` only covers the last 24 hours, so it goes to `unknown` after 24 hours with nothing heard.
+- `daily_count`, `daily_top_species`, `species_diversity`, `activity_level`, `new_species_window` and `lifetime_species` come from BirdWeather's own counts and fill in on the first successful poll. `activity_level` stays `unknown` until there's a 30-day baseline.
+- `notable_species`, `rarest_species` and `yearly_top_species` are scored against the rarity baseline (BirdWeather's top species over the baseline window), which is fetched once a day. They're available from the first poll.
+- `peak_activity_hour` comes from the station's time-of-day activity over the last 7 days, fetched once a day.
+- The PUC hardware sensors are created on the first poll, and only for the groups of readings your station reports, so a station that isn't a PUC gets none. If a station starts reporting them later, they appear after a restart.
 
 ## `last_detection` is fine but `notable_species` is `unknown`
 
-These behave differently on purpose (see #62):
+These behave differently on purpose:
 
-- **`last_detection`** persists — it reads a rolling cache of the most recent detection events (`.storage/birdweather.<station_id>.recent_events`), rehydrated on startup, so it survives restarts *and* outages. It's only `unknown` before the station's very first detection.
-- **`notable_species`** is deliberately *not* persisted — it means "most notable in the last 24 h," so it drops to `unknown` (with the bird-off icon) when nothing has been detected in 24 h. During an outage that's the expected signal — check the BirdWeather app to confirm the station is hearing birds.
+- **`last_detection`** reads a saved list of the most recent detections (`.storage/birdweather.<station_id>.recent_events`), loaded again on startup, so it survives restarts and outages. It's only `unknown` before the station's very first detection.
+- **`notable_species`** isn't saved, on purpose. It's the most notable bird of the last 24 hours, so it goes to `unknown` (with the bird-off icon) when nothing has been heard for 24 hours. During an outage, that's the sign to expect. Check the BirdWeather app to see whether the station is still hearing birds.
 
 ## The "play the call" button does nothing
 
-Audio is **off by default**; enable it under **Configure → Audio**. Even then, if your BirdWeather station has audio sharing turned off its soundscapes are silent — the button appears but plays nothing (the integration streams BirdWeather's clip directly and can't detect a silent one). FLAC also may not play in some browsers/contexts.
+Audio is off by default. Turn it on under **Configure → Audio**. Even then, if your station has audio sharing turned off, its soundscapes are silent: the button appears but plays nothing, since the integration plays BirdWeather's clip as it is and can't tell that it's silent. FLAC also may not play in some browsers.
 
 ## Bird counts dropped after upgrading
 
 On a bat-edition PUC, earlier versions counted bats as birds. Bird counts now leave bats out, so the 24-hour totals, top species, lifetime species, the activity curve and the long-term statistics can drop when you upgrade, and the statistics graph shows a one-time step. Turn on **Bat support** with **Reconfigure** to see the bats on their own sensors. See [bats.md](bats.md).
 
-## Custom cards don't appear in the dashboard editor
+## The cards don't appear in the dashboard editor
 
-The integration registers `birdweather-bird-card` and `birdweather-bird-list-card` automatically on startup; you don't need to add them as Lovelace resources. If the picker doesn't list them:
+The integration adds `birdweather-bird-card` and `birdweather-bird-list-card` itself when it starts, so you don't need to add them as dashboard resources. If the card picker doesn't list them:
 
-1. Restart Home Assistant once. Card registration runs during integration setup.
-2. Hard-refresh your dashboard (browser reload bypassing cache, e.g. **Shift+Cmd+R** / **Ctrl+F5**). The card JS is cached aggressively.
-3. Check **Settings → System → Logs** for `birdweather` setup errors — if setup failed, the cards never got registered.
+1. Restart Home Assistant once. The cards are added while the integration sets up.
+2. Force-refresh the dashboard (**Shift+Cmd+R** or **Ctrl+F5**). Browsers hold on to the card code.
+3. Look in **Settings → System → Logs** for `birdweather` setup errors. If setup failed, the cards were never added.
 
 ## Cards show "Custom element doesn't exist" after a restart
 
@@ -65,18 +65,18 @@ If you still see the error:
    Right after an upgrade, a YAML dashboard may show the old version of the cards once. A force-refresh fixes it.
 2. **First restart after installing.** Home Assistant only serves files from `config/www` if that folder existed when it started. If the integration had to create it, the loader starts working after your next restart.
 
-## A card looks stale right after updating the integration
+## A card looks out of date right after updating the integration
 
-The card JavaScript is cached by your browser and only re-fetched when the integration version changes; an already-open dashboard tab keeps running the old JS until it reloads. Hard-refresh the dashboard once after upgrading.
+Your browser caches the card code and only fetches it again when the integration's version changes, and a dashboard tab that's already open keeps running the old code until it reloads. Force-refresh the dashboard once after upgrading.
 
 ## A bird photo looks oddly cropped, or shows a placeholder
 
-Photos come from BirdWeather, which serves one square crop per species — and a few are cropped tightly at the source. The cards always show the *whole* image (the soft blurred edges are fill), so a clipped subject means BirdWeather's own image is cropped that way. A bird placeholder means BirdWeather has no image for that species yet, or it failed to load; it appears once a photo is available and the next poll caches the URL.
+Photos come from BirdWeather, which serves one square crop for each species, and a few are cropped tightly at the source. The cards always show the whole image (the soft blurred edges are just fill), so a clipped bird means BirdWeather's own image is cropped that way. A bird placeholder means BirdWeather has no image for that species yet, or it didn't load. It shows up once a photo is available and the next poll saves its address.
 
 ## Sensor entity IDs don't match the docs
 
-The IDs in these docs use a station named "Backyard." If your station has a different name, sensors are prefixed with `sensor.<your_device_name>_*`. The suffix (`last_detection`, `notable_species`, etc.) is stable across installs.
+The IDs in these docs are for a station named "Backyard". If your station has a different name, its sensors start with `sensor.<your_device_name>_` instead. The end of the ID (`last_detection`, `notable_species` and so on) is the same on every install.
 
 ## Filing a bug report
 
-Open the BirdWeather device page and use **⋮ → Download diagnostics** to attach a redacted snapshot of the integration's state (the station ID and name are redacted, so it's safe to share). It includes the latest poll's data and a short coordinator summary.
+Open the BirdWeather device page and choose **⋮ → Download diagnostics**. The download is a snapshot of the integration's state, including the latest poll's data and a short coordinator summary. The station ID and name are removed, so it's safe to attach.
