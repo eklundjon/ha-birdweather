@@ -42,6 +42,25 @@ The integration registers `birdweather-bird-card` and `birdweather-bird-list-car
 2. Hard-refresh your dashboard (browser reload bypassing cache, e.g. **Shift+Cmd+R** / **Ctrl+F5**). The card JS is cached aggressively.
 3. Check **Settings → System → Logs** for `birdweather` setup errors — if setup failed, the cards never got registered.
 
+## Cards show "Custom element doesn't exist" after a restart
+
+Home Assistant starts serving the dashboard before integrations like this one have finished loading. A browser or the Home Assistant app that reconnects during a restart can load the dashboard in that gap, before the cards exist. On older Apple devices (Safari and iPad web views before iPadOS 26), the cards could also fail to appear on every reload, because of a compatibility layer Home Assistant loads on those browsers.
+
+To handle both, the integration puts a small loader at `config/www/birdweather-card-loader.js` and adds it to your dashboard resources (**Settings → Dashboards → ⋮ → Resources**). The loader waits for the integration to finish loading and then brings the cards in, so they appear without a refresh. Please don't delete that resource. It's removed automatically when you remove your last BirdWeather station.
+
+If you still see the error:
+
+1. **YAML dashboards** (`lovelace: mode: yaml`) have to list the loader themselves:
+   ```yaml
+   lovelace:
+     mode: yaml
+     resources:
+       - url: /local/birdweather-card-loader.js
+         type: module
+   ```
+   Right after an upgrade, a YAML dashboard may show the old version of the cards once. A force-refresh fixes it.
+2. **First restart after installing.** Home Assistant only serves files from `config/www` if that folder existed when it started. If the integration had to create it, the loader starts working after your next restart.
+
 ## A card looks stale right after updating the integration
 
 The card JavaScript is cached by your browser and only re-fetched when the integration version changes; an already-open dashboard tab keeps running the old JS until it reloads. Hard-refresh the dashboard once after upgrading.
