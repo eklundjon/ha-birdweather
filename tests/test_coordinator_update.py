@@ -302,3 +302,28 @@ async def test_short_retry_after_is_ignored() -> None:
 async def test_error_without_retry_after_raises_plainly() -> None:
     err = await _poll_with_detections_error(BirdWeatherError("transport error: down"))
     assert getattr(err, "retry_after", None) is None
+
+
+def test_wikipedia_link_falls_back_to_scientific_name() -> None:
+    # A species not in the upstream links cache (e.g. a watched species not
+    # heard since a restart) still gets a Wikipedia link, templated from the
+    # record's scientific name or the persisted name lookup.
+    coord = make_coordinator(client=make_client(baseline=_BASELINE, detections={}))
+    coord._sci_names["Barred Owl"] = "Strix varia"
+
+    from_record = coord._links_for("Barred Owl", "brdowl", "Strix varia")
+    from_lookup = coord._links_for("Barred Owl", "brdowl")
+    unknown = coord._links_for("Mystery Bird", "")
+
+    assert from_record["wikipedia_url"] == "https://en.wikipedia.org/wiki/Strix_varia"
+    assert from_lookup["wikipedia_url"] == "https://en.wikipedia.org/wiki/Strix_varia"
+    assert unknown["wikipedia_url"] is None
+
+
+def test_cached_wikipedia_link_wins_over_template() -> None:
+    coord = make_coordinator(client=make_client(baseline=_BASELINE, detections={}))
+    coord._links_cache["brdowl"] = {"wikipedia_url": "https://en.wikipedia.org/wiki/Barred_owl"}
+
+    links = coord._links_for("Barred Owl", "brdowl", "Strix varia")
+
+    assert links["wikipedia_url"] == "https://en.wikipedia.org/wiki/Barred_owl"

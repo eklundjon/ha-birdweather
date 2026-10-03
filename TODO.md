@@ -4,8 +4,6 @@ What's still open, plus the research behind it. Shipped work is in git history a
 
 ## Before 0.7.0
 
-- Merge the docs PRs: the voice rewrite (#55), then the content sweep (README requirements up front, a full options reference in `docs/advanced.md`, contributing/api/architecture updates).
-- Restart HA and confirm the `CONCENTRATION_PARTS_PER_MILLION` deprecation warning is gone from the log (fixed in #54).
 - Version-bump PR: subject `Release 0.7.0: <Name>`, notes in the commit body (`git commit -F`). Lead with the bat-support change to bird counts on bat-edition PUCs.
 
 Known flake: the minimum-HA pytest job occasionally fails at teardown with a "Lingering timer" error, and a re-run clears it (see `docs/contributing.md`). Seen again on #54 in `test_config_flow.py::test_user_flow_shows_form`. If it becomes frequent, find which store schedules a delayed save during the user-flow init and flush or await it in the test.
@@ -53,13 +51,11 @@ For the real-time path, this mostly replaces the time-bounded feed item under "D
 
 ## Reference links and photos
 
-- **Wikipedia link fallback.** `_links_for` gets eBird and Wikipedia URLs from the cache that the detection feed fills. eBird falls back to a template built from `sp_code`; Wikipedia doesn't, so watched or baseline species that haven't been heard this session (e.g. right after a restart) show no Wikipedia link until they're heard again. Add a scientific-name fallback (`https://en.wikipedia.org/wiki/<Genus_species>`, about 100% reliable through Wikipedia's binomial redirects; ha-haikubox already does this), preferring the cached URL when there is one. Pass `scientific_name` into `_links_for`. Minor.
 - **Photo credits.** Some images come with no credit or license, so no caption is shown; a generic "Photo: BirdWeather" line could stand in. `imageCredit` is sometimes a bare URL rather than a name; left as is.
 
 ## Cards
 
 - **The detail view is getting crowded.** The list card's expanded row now has eBird, All About Birds, Macaulay and BirdWeather links, the confidence label, the alpha code, the Wikipedia description, the activity chart and the photo credit, each behind its own toggle. Consider grouping them (a compact and a full detail mode, or folding the secondary details away) before adding more. A new per-species detail should reuse something already there, such as a window toggle on the activity chart, rather than add a line.
-- **Rethink the bird card's portrait layout.** It reserves a fixed text strip below the photo (`clamp()` heights in the `.img-wrap` formulas), sized for the worst-case number of lines. Adding the confidence line overflowed the old reserve and clipped the species name; enlarging the reserves (base `clamp(104px, 34cqh, 200px)`, short portrait `clamp(86px, 30cqh, 160px)`) and hiding the label on very short wide cards fixed it for now, but every new text line reopens the math. A text block sized to its content, with the photo filling the rest (`.body { flex: 0 0 auto }`, image `flex: 1 1 auto`), couldn't overflow at all. The obstacle is the portrait-priority width formulas, which derive the photo's width from its explicit height, so it needs those queries rethought. This is a shared card, so the change belongs in ha-haikubox first.
 
 ## Known limitations (BirdWeather's, not fixable here)
 

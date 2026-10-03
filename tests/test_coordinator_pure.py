@@ -25,6 +25,7 @@ from custom_components.birdweather.normalize import (
     _peak_hour,
     _process_baseline_count,
     _ranked,
+    _wikipedia_url,
 )
 
 _NOW = datetime(2026, 6, 1, 12, 0, tzinfo=UTC)
@@ -115,6 +116,11 @@ def test_url_builders() -> None:
         "https://search.macaulaylibrary.org/catalog?taxonCode=amerob"
     )
     assert _ml_url(None) is None
+    assert _wikipedia_url("Turdus migratorius") == (
+        "https://en.wikipedia.org/wiki/Turdus_migratorius"
+    )
+    assert _wikipedia_url("") is None
+    assert _wikipedia_url(None) is None
 
 
 # ---- _peak_hour ------------------------------------------------------------ #
