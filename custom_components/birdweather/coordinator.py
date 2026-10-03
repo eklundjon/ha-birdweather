@@ -71,6 +71,7 @@ from .normalize import (
     _peak_hour,
     _process_baseline_count,
     _ranked,
+    _wikipedia_url,
 )
 from .statistics import async_import_history_statistics
 
@@ -976,7 +977,11 @@ class BirdWeatherCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 # Reference links, so automations (and the new-species
                 # blueprint's buttons) can deep-link. Bats get only Wikipedia
                 # and BirdWeather.
-                **self._links_for(record.get("species", ""), record.get("sp_code", "")),
+                **self._links_for(
+                    record.get("species", ""),
+                    record.get("sp_code", ""),
+                    record.get("scientific_name"),
+                ),
                 **extra,
             },
         )
@@ -1141,15 +1146,18 @@ class BirdWeatherCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             earliest_iso,
         )
 
-    def _links_for(self, species: str, sp_code: str) -> dict[str, Any]:
+    def _links_for(
+        self, species: str, sp_code: str, scientific_name: str | None = None
+    ) -> dict[str, Any]:
         """Reference-link URLs for a record, surfaced by the integration so the
         cards just render them (no URL construction in the card). BirdWeather
         supplies authoritative eBird / Wikipedia / BirdWeather URLs (cached); All
         About Birds and Macaulay Library are templated (from the common name and
-        the eBird code respectively). eBird falls back to a template if the
-        upstream URL isn't cached yet. BirdWeather's species page has no template
-        (it's a BirdWeather-only page), so it's only present once cached from the
-        feed. Bats get only their Wikipedia and BirdWeather pages: eBird, All
+        the eBird code respectively). eBird and Wikipedia fall back to a template
+        (from the eBird code and the scientific name) if the upstream URL isn't
+        cached yet, e.g. a watched species not heard since a restart.
+        BirdWeather's species page has no template (it's a BirdWeather-only
+        page), so it's only present once cached from the feed. Bats get only their Wikipedia and BirdWeather pages: eBird, All
         About Birds and Macaulay Library are bird references."""
         if bat := self._bats.get(species):
             return {
@@ -1164,7 +1172,8 @@ class BirdWeatherCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         cached = self._links_cache.get(sp_code) or {}
         return {
             "ebird_url": cached.get("ebird_url") or _ebird_url(sp_code),
-            "wikipedia_url": cached.get("wikipedia_url"),
+            "wikipedia_url": cached.get("wikipedia_url")
+            or _wikipedia_url(scientific_name or self._sci_names.get(species)),
             "allaboutbirds_url": _allaboutbirds_url(species),
             "macaulay_url": _ml_url(sp_code),
             "birdweather_url": cached.get("birdweather_url"),
@@ -1179,7 +1188,9 @@ class BirdWeatherCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         """Stamp per-species metadata onto each record: reference-link URLs plus
         the diel `hourly` activity array (24 buckets) for the card's sparkline."""
         for r in records:
-            r.update(self._links_for(r.get("species", ""), r.get("sp_code", "")))
+            r.update(self._links_for(
+                r.get("species", ""), r.get("sp_code", ""), r.get("scientific_name")
+            ))
             r["hourly"] = self._diel_by_species.get(r.get("species", ""))
         return records
 

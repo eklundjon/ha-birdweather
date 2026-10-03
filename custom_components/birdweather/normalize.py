@@ -106,6 +106,16 @@ def _allaboutbirds_url(species: str | None) -> str | None:
     return f"https://www.allaboutbirds.org/guide/{species.replace(' ', '_')}" if species else None
 
 
+def _wikipedia_url(scientific_name: str | None) -> str | None:
+    # Fallback for species whose upstream URL isn't cached yet. Wikipedia
+    # redirects a binomial to the species article almost without exception,
+    # which is more reliable than the common name (vernacular-name drift,
+    # disambiguation pages).
+    if not scientific_name:
+        return None
+    return f"https://en.wikipedia.org/wiki/{scientific_name.replace(' ', '_')}"
+
+
 def _peak_hour(hourly: list[int] | None) -> int | None:
     """The hour (0–23) with the most detections in a 24-bucket diel array, or
     None if the array is empty/all-zero."""
