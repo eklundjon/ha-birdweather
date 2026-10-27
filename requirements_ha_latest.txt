@@ -11,4 +11,4 @@
 # the "HA latest" job's python in test.yml and .python-version together.
 # Dependabot resolves with .python-version, so it won't propose a PHACC release
 # that needs a newer Python than that file says.
-pytest-homeassistant-custom-component==0.13.367
+pytest-homeassistant-custom-component==0.13.369
