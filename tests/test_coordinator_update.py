@@ -7,18 +7,26 @@ records, and the new-species bootstrap.
 
 from __future__ import annotations
 
+import inspect
 from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock
 
 import pytest
+from homeassistant.core import HomeAssistant
 from homeassistant.helpers.update_coordinator import UpdateFailed
+from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.birdweather.client import BirdWeatherError
 from custom_components.birdweather.const import (
     CONF_AUDIO_ENABLED,
     CONF_FEED_MIN_CONFIDENCE,
+    CONF_STATION_ID,
+    DOMAIN,
 )
-from custom_components.birdweather.coordinator import _UPDATE_FAILED_TAKES_RETRY_AFTER
+from custom_components.birdweather.coordinator import (
+    _UPDATE_FAILED_TAKES_RETRY_AFTER,
+    BirdWeatherCoordinator,
+)
 
 from .coordinator_helpers import make_client, make_coordinator
 
@@ -302,6 +310,25 @@ async def test_short_retry_after_is_ignored() -> None:
 async def test_error_without_retry_after_raises_plainly() -> None:
     err = await _poll_with_detections_error(BirdWeatherError("transport error: down"))
     assert getattr(err, "retry_after", None) is None
+
+
+async def test_base_class_attributes_dont_shadow_methods(hass: HomeAssistant) -> None:
+    """No method of ours shares a name with an attribute set in __init__.
+
+    DataUpdateCoordinator.__init__ sets instance attributes, and one with the
+    same name as a method hides it: _retry_after (Home Assistant 2025.12+) did
+    exactly that (#61). The tests above build the coordinator with __new__, so
+    only a real __init__ shows it.
+    """
+    entry = MockConfigEntry(domain=DOMAIN, data={CONF_STATION_ID: "12345"})
+    entry.add_to_hass(hass)
+    coord = BirdWeatherCoordinator(hass, entry)
+    methods = {
+        name
+        for name, value in vars(BirdWeatherCoordinator).items()
+        if inspect.isfunction(value)
+    }
+    assert methods & vars(coord).keys() == set()
 
 
 def test_wikipedia_link_falls_back_to_scientific_name() -> None:
