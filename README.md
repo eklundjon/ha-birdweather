@@ -69,7 +69,7 @@ The integration creates a device named after the station, with the sensors above
 
 ### Add a card
 
-The cards install themselves, so there's nothing to add under dashboard resources. (The integration adds a small `/local/birdweather-card-loader.js` resource itself, so the cards also load on pages opened while Home Assistant is still starting. If your dashboards are in YAML mode, you need to add that resource yourself. See [troubleshooting](docs/troubleshooting.md#cards-show-custom-element-doesnt-exist-after-a-restart).) The simplest card is:
+The cards install themselves, so there's nothing to add under dashboard resources. (A dashboard opened while Home Assistant is still starting needs a refresh to show them. See [troubleshooting](docs/troubleshooting.md#cards-show-custom-element-doesnt-exist-after-a-restart).) The simplest card is:
 
 ```yaml
 type: custom:birdweather-bird-card

@@ -54,7 +54,6 @@ graph TB
 custom_components/birdweather/
 ├── __init__.py           # setup and teardown; serves and registers the cards; options reload
 ├── binary_sensor.py      # the extended-silence problem sensor
-├── card_loader.py        # copies the card loader to config/www and adds it as a dashboard resource
 ├── client.py             # BirdWeatherClient: every GraphQL query (discovery, polling, history)
 ├── config_flow.py        # setup (finding the station, bat support), reconfigure, options
 ├── const.py              # domain, config keys, defaults, event and trigger names
@@ -62,6 +61,7 @@ custom_components/birdweather/
 ├── device_trigger.py     # new_species, unusual_visitor, watched_species and bat_activity triggers
 ├── diagnostics.py        # the diagnostics download, with the station removed
 ├── entity.py             # BirdWeatherEntity: shared device info for the platforms
+├── legacy_card_loader.py # removes the /local card loader that 0.6.0 and 0.7.0 installed
 ├── manifest.json         # the integration's manifest; its version is bumped by hand to release
 ├── normalize.py          # parsing, rarity and notability scoring, link URLs (no HA state)
 ├── statistics.py         # loads the daily history into HA's long-term statistics
@@ -72,8 +72,7 @@ custom_components/birdweather/
 ├── brand/                # icon
 └── www/
     ├── birdweather-bird-card.js     # single-bird card
-    ├── birdweather-details-card.js  # the ranked list card (birdweather-bird-list-card)
-    └── birdweather-card-loader.js   # startup loader, copied to config/www
+    └── birdweather-details-card.js  # the ranked list card (birdweather-bird-list-card)
 ```
 
 ## The coordinator runs the poll; the other modules do the work
@@ -189,7 +188,9 @@ The two cards in `www/` are registered in `async_setup`:
 - `birdweather-bird-card`: one bird, with an ⓘ button that pops up the details view.
 - `birdweather-bird-list-card`: a ranked list whose rows expand, with confidence labels, Wikipedia descriptions, a daily activity chart, reference-link buttons, and an optional play button.
 
-They read sensor state over Home Assistant's WebSocket and know nothing about the coordinator. Their URLs carry `?v=<version>`, so browsers fetch the new code after an upgrade. `card_loader.py` also copies `birdweather-card-loader.js` to `config/www` and adds it as a dashboard resource, so the cards load on pages opened while Home Assistant is still starting (see [troubleshooting.md](troubleshooting.md#cards-show-custom-element-doesnt-exist-after-a-restart)).
+They read sensor state over Home Assistant's WebSocket and know nothing about the coordinator. Their URLs carry `?v=<version>`, so browsers fetch the new code after an upgrade. A page opened while Home Assistant is still starting doesn't get them until it's refreshed (see [troubleshooting.md](troubleshooting.md#cards-show-custom-element-doesnt-exist-after-a-restart)). 0.6.0 and 0.7.0 covered that gap with a loader copied into `config/www`, but an integration shouldn't write there, so `legacy_card_loader.py` now deletes it and its dashboard resource on every setup.
+
+Home Assistant's app bundle installs a scoped custom element registry polyfill that replaces `window.customElements`, and Lovelace looks cards up in the new registry. A card module that ran first has its elements on the native registry, where Lovelace can't see them. `_defineElement` in each card waits until `<home-assistant>` is defined (the polyfill is installed by then) and, if the registry has changed, defines the same class again on the new one. See the Haikubox integration's [architecture notes](https://github.com/eklundjon/ha-haikubox/blob/main/docs/architecture.md#how-the-cards-get-onto-the-page) for the details.
 
 The cards are generated from the Haikubox integration's cards by `scripts/sync-cards.sh`, which swaps the brand names and flips a few feature switches, and the BirdWeather reference link is added back by hand. See [cards.md](cards.md).
 
