@@ -300,11 +300,28 @@ class BirdWeatherBirdCardEditor extends HTMLElement {
 // Idempotent define: if the script gets loaded twice in the same page
 // (cache flap during an HA upgrade, version-bust transient, etc.) a
 // second `define` would throw and abort the script mid-execution,
-// stranding window.customCards in an inconsistent state. The same
-// guard appears around the card itself and customCards.push below.
-if (!customElements.get("birdweather-bird-card-editor")) {
-  customElements.define("birdweather-bird-card-editor", BirdWeatherBirdCardEditor);
+// stranding window.customCards in an inconsistent state.
+//
+// It also covers HA's scoped custom element registry polyfill, which replaces
+// window.customElements with a registry of its own, the one Lovelace looks
+// in. HA starts its app bundle and this module in parallel, so this module can
+// run first and define its elements on the native registry, which the
+// polyfill's get() and whenDefined() never see. The card then shows "Custom
+// element doesn't exist". HA installs the polyfill before it defines
+// <home-assistant>, so once that's defined, define the same class again on
+// whatever registry is current. The polyfill accepts a class that's already
+// on the native registry.
+function _defineElement(tag, cls) {
+  const registry = customElements;
+  if (!registry.get(tag)) registry.define(tag, cls);
+  registry.whenDefined("home-assistant").then(() => {
+    if (customElements !== registry && !customElements.get(tag)) {
+      customElements.define(tag, cls);
+    }
+  });
 }
+
+_defineElement("birdweather-bird-card-editor", BirdWeatherBirdCardEditor);
 
 // ── Card ──────────────────────────────────────────────────────────────────────
 
@@ -1027,23 +1044,20 @@ class BirdWeatherBirdCard extends HTMLElement {
   }
 }
 
-if (!customElements.get("birdweather-bird-card")) {
-  customElements.define("birdweather-bird-card", BirdWeatherBirdCard);
+_defineElement("birdweather-bird-card", BirdWeatherBirdCard);
 
-  // The define guard alone doesn't cover this: when HA's scoped-registry
-  // polyfill hides a native define, the loader runs this module a second time
-  // (see birdweather-card-loader.js), and the card picker would list it twice.
-  window.customCards ??= [];
-  if (!window.customCards.some((c) => c.type === "birdweather-bird-card")) {
-    window.customCards.push({
-      type: "birdweather-bird-card",
-      name: "BirdWeather Bird Card",
-      description: "Displays a BirdWeather bird or bat detection with photo, species name, and timestamp.",
-      documentationURL: "https://github.com/eklundjon/ha-birdweather/blob/main/docs/cards.md",
-      getEntitySuggestion: (hass, entityId) =>
-        _isOwnListEntity(hass, entityId)
-          ? { config: { type: "custom:birdweather-bird-card", entity: entityId } }
-          : null,
-    });
-  }
+// A second copy of this module (see _defineElement) must not list the card
+// twice in the card picker.
+window.customCards ??= [];
+if (!window.customCards.some((c) => c.type === "birdweather-bird-card")) {
+  window.customCards.push({
+    type: "birdweather-bird-card",
+    name: "BirdWeather Bird Card",
+    description: "Displays a BirdWeather bird or bat detection with photo, species name, and timestamp.",
+    documentationURL: "https://github.com/eklundjon/ha-birdweather/blob/main/docs/cards.md",
+    getEntitySuggestion: (hass, entityId) =>
+      _isOwnListEntity(hass, entityId)
+        ? { config: { type: "custom:birdweather-bird-card", entity: entityId } }
+        : null,
+  });
 }

@@ -10,19 +10,18 @@ from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers import device_registry as dr
 from homeassistant.loader import async_get_integration
 
-from .card_loader import async_install_card_loader, async_remove_card_loader
 from .const import CONF_STATION_ID, DOMAIN
 from .coordinator import (
     BirdWeatherConfigEntry,
     BirdWeatherCoordinator,
     async_get_entry_device,
 )
+from .legacy_card_loader import async_remove_legacy_card_loader
 
 CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
 
 PLATFORMS = [Platform.SENSOR, Platform.BINARY_SENSOR]
 
-# Keep in sync with CARDS in www/birdweather-card-loader.js.
 _CARDS = [
     ("/birdweather/birdweather-bird-card.js",      "www/birdweather-bird-card.js"),
     ("/birdweather/birdweather-bird-list-card.js", "www/birdweather-details-card.js"),
@@ -37,11 +36,11 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
     )
     integration = await async_get_integration(hass, DOMAIN)
     version = integration.version or "dev"
+    # add_extra_js_url only reaches pages rendered after this point, so a page
+    # loaded while HA was still starting needs a refresh to show the cards.
     for url, _ in _CARDS:
         add_extra_js_url(hass, f"{url}?v={version}")
-    # add_extra_js_url only reaches pages rendered after this point; the loader
-    # covers pages loaded while HA was still starting (see card_loader.py).
-    await async_install_card_loader(hass, version)
+    await async_remove_legacy_card_loader(hass)
     return True
 
 
@@ -87,12 +86,7 @@ async def async_remove_entry(hass: HomeAssistant, entry: BirdWeatherConfigEntry)
     (see async_remove_stores). All stores are namespaced by station id, so
     they're safe to delete regardless of any other configured stations.
     (BirdWeather streams audio, so there's no on-disk media cache to remove.)
-    The card loader is shared by every station, so it's removed only once no
-    BirdWeather entries remain — by the time this runs HA has already dropped
-    the entry being removed, so an empty list means it was the last.
     """
     await BirdWeatherCoordinator.async_remove_stores(
         hass, entry.data[CONF_STATION_ID]
     )
-    if not hass.config_entries.async_entries(DOMAIN):
-        await async_remove_card_loader(hass)
