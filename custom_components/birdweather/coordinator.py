@@ -385,7 +385,7 @@ class BirdWeatherCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             )
         except (aiohttp.ClientError, BirdWeatherError) as err:
             raise _update_failed(
-                f"Error communicating with BirdWeather API: {err}", self._retry_after(err)
+                f"Error communicating with BirdWeather API: {err}", self._compute_retry_after(err)
             ) from err
 
         # Bats come from their own feed, so they can't crowd birds out of the
@@ -934,7 +934,7 @@ class BirdWeatherCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             sp for sp in self._seen_species if self._bat_support or not self._is_bat(sp)
         )
 
-    def _retry_after(self, err: Exception) -> float | None:
+    def _compute_retry_after(self, err: Exception) -> float | None:
         """The API's Retry-After for a failed request, when it's worth honoring.
 
         Only a delay longer than the poll interval counts: Home Assistant uses
