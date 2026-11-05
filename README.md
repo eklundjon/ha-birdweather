@@ -1,6 +1,6 @@
 # BirdWeather for Home Assistant
 
-[![hacs_badge](https://img.shields.io/badge/HACS-Custom-orange.svg)](https://github.com/hacs/integration)
+[![hacs_badge](https://img.shields.io/badge/HACS-Default-orange.svg)](https://github.com/hacs/integration)
 [![HA Version](https://img.shields.io/badge/Home%20Assistant-2025.4+-blue.svg?logo=homeassistant)](https://www.home-assistant.io)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
@@ -42,14 +42,11 @@ This is a Home Assistant integration for [BirdWeather](https://www.birdweather.c
 
 **HACS (recommended)**
 
+BirdWeather is in the [HACS](https://hacs.xyz/) default store.
+
 [![Open your Home Assistant instance and open a repository inside the Home Assistant Community Store.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=eklundjon&repository=ha-birdweather&category=integration)
 
-Click the badge to open this repository in HACS, click **Download**, and restart Home Assistant. Or add it by hand:
-
-1. In **HACS**, open the **⋮** menu (top right) and choose **Custom repositories**.
-2. Add `https://github.com/eklundjon/ha-birdweather` with type **Integration**, then click **Add**.
-3. Search HACS for **BirdWeather**, open it, and click **Download**.
-4. Restart Home Assistant.
+Click the badge, click **Download**, and restart Home Assistant. You can also search for **BirdWeather** from inside HACS.
 
 **Manual**
 
