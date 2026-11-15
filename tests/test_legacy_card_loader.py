@@ -99,7 +99,11 @@ async def test_integration_setup_runs_the_cleanup(
     with patch("custom_components.birdweather.add_extra_js_url"):
         assert await integration.async_setup(hass, {})
 
-    assert [i["url"] for i in resources.async_items()] == [OTHER["url"]]
+    # The old loader's entry is gone; the cards' own resources replace it
+    # (see test_card_resources.py).
+    urls = [i["url"] for i in resources.async_items()]
+    assert OTHER["url"] in urls
+    assert not [u for u in urls if u.startswith(LOADER_URL)]
     assert not _loader_path(hass).exists()
 
 

@@ -54,6 +54,7 @@ graph TB
 custom_components/birdweather/
 ├── __init__.py           # setup and teardown; serves and registers the cards; options reload
 ├── binary_sensor.py      # the extended-silence problem sensor
+├── card_resources.py     # keeps a Lovelace resource per card, for pages loaded during startup
 ├── client.py             # BirdWeatherClient: every GraphQL query (discovery, polling, history)
 ├── config_flow.py        # setup (finding the station, bat support), reconfigure, options
 ├── const.py              # domain, config keys, defaults, event and trigger names
@@ -141,7 +142,7 @@ sequenceDiagram
 
     Note over HA: HA starts up
     HA->>Init: async_setup
-    Init->>HA: register /birdweather/*.js static paths + add_extra_js_url
+    Init->>HA: register /birdweather/*.js static paths, Lovelace resources + add_extra_js_url
 
     Note over HA: User adds the integration
     HA->>CF: async_step_user (find and check the station), then async_step_bats
@@ -188,7 +189,17 @@ The two cards in `www/` are registered in `async_setup`:
 - `birdweather-bird-card`: one bird, with an ⓘ button that pops up the details view.
 - `birdweather-bird-list-card`: a ranked list whose rows expand, with confidence labels, Wikipedia descriptions, a daily activity chart, reference-link buttons, and an optional play button.
 
-They read sensor state over Home Assistant's WebSocket and know nothing about the coordinator. Their URLs carry `?v=<version>`, so browsers fetch the new code after an upgrade. A page opened while Home Assistant is still starting doesn't get them until it's refreshed (see [troubleshooting.md](troubleshooting.md#cards-show-custom-element-doesnt-exist-after-a-restart)). 0.6.0 and 0.7.0 covered that gap with a loader copied into `config/www`, but an integration shouldn't write there, so `legacy_card_loader.py` now deletes it and its dashboard resource on every setup.
+They read sensor state over Home Assistant's WebSocket and know nothing about the coordinator. Their URLs carry `?v=<version>`, so browsers fetch the new code after an upgrade.
+
+`add_extra_js_url` only reaches pages rendered after `async_setup` has run, and Home Assistant serves pages from bootstrap stage 0, well before custom integrations load. The frontend reloads itself when it reconnects to a new backend version, so after a Home Assistant update every open dashboard reloads in that gap, and a kiosk would show "Custom element doesn't exist" until someone refreshed it. [`card_resources.py`](../custom_components/birdweather/card_resources.py) closes most of that gap:
+
+- **Lovelace resources.** It keeps one storage-mode `module` resource per card, at the same `?v=` URL as the extra-JS entry. The resource list is Home Assistant's own storage, so a page loaded during startup still asks for the cards.
+- **The browser cache.** Our static path isn't registered yet when that page asks, but the card files are served with Home Assistant's static `max-age` of 31 days, so a browser that has shown the cards before loads them from its cache. Lovelace's error card waits on `whenDefined` and rebuilds once the element exists.
+- **Same URL, one module.** A page that has both the resource and the extra-JS entry runs each module once. Setup updates the resources before calling `add_extra_js_url`, so no page gets a new extra-JS URL alongside an old resource URL.
+- **What it doesn't cover.** A browser that has never loaded the cards, YAML-mode dashboards (their resources are read-only to an integration), and the first restart after an integration upgrade, when the page runs the previous release's cards from cache (see "A card looks out of date right after updating the integration" in [troubleshooting.md](troubleshooting.md)).
+- **Writes.** Setup changes the resources only on a new install, on an upgrade, or to clean up a duplicate or a hand-added entry of the wrong type. Removing the last station deletes them.
+
+0.6.0 and 0.7.0 covered the gap with a loader copied into `config/www`, but an integration shouldn't write there, so `legacy_card_loader.py` now deletes it and its dashboard resource on every setup. The Haikubox integration's [architecture notes](https://github.com/eklundjon/ha-haikubox/blob/main/docs/architecture.md#how-the-cards-get-onto-the-page) have the longer history.
 
 Home Assistant's app bundle installs a scoped custom element registry polyfill that replaces `window.customElements`, and Lovelace looks cards up in the new registry. A card module that ran first has its elements on the native registry, where Lovelace can't see them. `_defineElement` in each card waits until `<home-assistant>` is defined (the polyfill is installed by then) and, if the registry has changed, defines the same class again on the new one. See the Haikubox integration's [architecture notes](https://github.com/eklundjon/ha-haikubox/blob/main/docs/architecture.md#how-the-cards-get-onto-the-page) for the details.
 
