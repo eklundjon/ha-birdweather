@@ -45,6 +45,7 @@ The tests in `tests/` are roughly one file per module:
 - `test_coordinator_bats.py`: bat support
 - `test_statistics.py`, `test_config_flow.py`, `test_advanced_options.py`, `test_device_trigger.py`, `test_diagnostics.py` and `test_store_migration.py`
 - `test_entry_setup.py`: setting up a whole entry
+- `test_card_resources.py`: keeping the cards' dashboard resources current
 - `test_legacy_card_loader.py`: removing the card loader that 0.6.0 and 0.7.0 installed
 
 The cards also have JavaScript tests in `tests/js/`: defining their elements again when Home Assistant's scoped registry polyfill replaces the registry, the guards against loading twice, and card-picker suggestions. They use Node's built-in test runner (Node 22 or newer) and have no dependencies, so there's nothing to install:
@@ -125,7 +126,7 @@ None of these replace the tests. The tests check specific behavior. The smoke te
 
 The two cards in `custom_components/birdweather/www/` are generated from the Haikubox integration's cards by `scripts/sync-cards.sh`, which swaps the brand names and flips a few feature switches. Don't edit them by hand except for the bits the script tells you to re-apply. See the comment at the top of each card and [cards.md](cards.md).
 
-`legacy_card_loader.py` and `tests/js/cards.test.mjs` are copied from Haikubox by hand, with only the names (and release numbers) changed, rather than generated. Keep them in step with the Haikubox originals.
+`card_resources.py`, `legacy_card_loader.py` and their tests, and `tests/js/cards.test.mjs` are copied from Haikubox by hand, with only the names (and release numbers) changed, rather than generated. Keep them in step with the Haikubox originals.
 
 ## Pull requests
 

@@ -10,6 +10,7 @@ from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers import device_registry as dr
 from homeassistant.loader import async_get_integration
 
+from .card_resources import async_register_card_resources, async_remove_card_resources
 from .const import CONF_STATION_ID, DOMAIN
 from .coordinator import (
     BirdWeatherConfigEntry,
@@ -36,10 +37,16 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
     )
     integration = await async_get_integration(hass, DOMAIN)
     version = integration.version or "dev"
-    # add_extra_js_url only reaches pages rendered after this point, so a page
-    # loaded while HA was still starting needs a refresh to show the cards.
-    for url, _ in _CARDS:
-        add_extra_js_url(hass, f"{url}?v={version}")
+    # The ?v= query busts the browser cache on upgrade; without it, default
+    # cache headers would serve a stale card after an update.
+    card_urls = [f"{url}?v={version}" for url, _ in _CARDS]
+    # add_extra_js_url only reaches pages rendered after this point. The
+    # Lovelace resources also cover a page loaded while HA was still starting
+    # (see card_resources.py). Update them first, so no page gets the new
+    # extra-JS URL alongside an old resource URL.
+    await async_register_card_resources(hass, card_urls)
+    for url in card_urls:
+        add_extra_js_url(hass, url)
     await async_remove_legacy_card_loader(hass)
     return True
 
@@ -86,7 +93,15 @@ async def async_remove_entry(hass: HomeAssistant, entry: BirdWeatherConfigEntry)
     (see async_remove_stores). All stores are namespaced by station id, so
     they're safe to delete regardless of any other configured stations.
     (BirdWeather streams audio, so there's no on-disk media cache to remove.)
+
+    The cards' dashboard resources go once no BirdWeather entries remain. By
+    the time this runs HA has already dropped the entry being removed, so an
+    empty list means it was the last.
     """
     await BirdWeatherCoordinator.async_remove_stores(
         hass, entry.data[CONF_STATION_ID]
     )
+    if not hass.config_entries.async_entries(DOMAIN):
+        # Without a station the static paths go away on the next restart, so
+        # the cards' resources would only 404.
+        await async_remove_card_resources(hass, [url for url, _ in _CARDS])

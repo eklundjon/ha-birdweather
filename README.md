@@ -66,7 +66,7 @@ The integration creates a device named after the station, with the sensors above
 
 ### Add a card
 
-The cards install themselves, so there's nothing to add under dashboard resources. (A dashboard opened while Home Assistant is still starting needs a refresh to show them. See [troubleshooting](docs/troubleshooting.md#cards-show-custom-element-doesnt-exist-after-a-restart).) The simplest card is:
+The cards install themselves, including their dashboard resources, so there's nothing to add by hand. The simplest card is:
 
 ```yaml
 type: custom:birdweather-bird-card

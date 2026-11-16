@@ -1,6 +1,6 @@
 # Custom cards
 
-The integration comes with two dashboard cards. They install themselves, so there's nothing to add under dashboard resources.
+The integration comes with two dashboard cards. They install themselves, including their dashboard resources, so there's nothing to add by hand. (Why they're listed under resources at all: [Cards show "Custom element doesn't exist" after a restart](troubleshooting.md#cards-show-custom-element-doesnt-exist-after-a-restart).)
 
 - [`birdweather-bird-card`](#birdweather-bird-card) shows one bird: photo, name and how long ago it was heard.
 - [`birdweather-bird-list-card`](#birdweather-bird-list-card) shows a ranked list of birds. Tap a row for details.

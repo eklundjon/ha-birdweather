@@ -15,9 +15,10 @@ import logging
 from pathlib import Path
 from urllib.parse import urlsplit
 
-from homeassistant.components.lovelace.const import LOVELACE_DATA
 from homeassistant.components.lovelace.resources import ResourceStorageCollection
 from homeassistant.core import HomeAssistant
+
+from .card_resources import async_storage_resources
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -32,7 +33,7 @@ async def async_remove_legacy_card_loader(hass: HomeAssistant) -> None:
     a 404 in the browser console, so log and carry on rather than fail setup.
     """
     try:
-        resources = await _async_storage_resources(hass)
+        resources = await async_storage_resources(hass)
         if resources is not None:
             for item in _our_items(resources):
                 await resources.async_delete_item(item["id"])
@@ -43,25 +44,6 @@ async def async_remove_legacy_card_loader(hass: HomeAssistant) -> None:
 
 def _loader_path(hass: HomeAssistant) -> Path:
     return Path(hass.config.path("www", LOADER_FILE))
-
-
-async def _async_storage_resources(
-    hass: HomeAssistant,
-) -> ResourceStorageCollection | None:
-    """The loaded resource collection, or None when it isn't ours to edit.
-
-    In YAML mode the collection is a read-only ResourceYAMLCollection.
-    """
-    lovelace = hass.data.get(LOVELACE_DATA)
-    resources = lovelace.resources if lovelace is not None else None
-    if not isinstance(resources, ResourceStorageCollection):
-        return None
-    # The collection loads lazily (on first websocket list); mirror what HA's
-    # own handlers do so async_items() reflects what's on disk.
-    if not resources.loaded:
-        await resources.async_load()
-        resources.loaded = True
-    return resources
 
 
 def _our_items(resources: ResourceStorageCollection) -> list[dict]:
